@@ -115,6 +115,7 @@ pie_getdata<-function(boxsyncpath=NULL){
 }
 
 pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F){
+  print(unique(ss_pie_raw$ID))
   numseg<-max(ss_pie_raw$num_segments)
   ss_pie_scon<-split(ss_pie_raw,ss_pie_raw$con_num)
   ss_proc<-do.call(rbind,lapply(ss_pie_scon,function(sx){
@@ -125,7 +126,11 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F){
     tw<-as.data.frame(as.list(rep(0,3*numseg)))
     names(tw)<-indexsx$variname
     sxw<-merge(sx,tw,all = T)
-    for (i in sx$trial) {
+    sxw$samphx<-NA
+    sxw$rewhx<-NA
+    sxw<-sxw[which(sxw$RT!=0),]
+    for (i in sxw$trial) {
+      print(i)
       segchoice<-sxw[i,"selected_segment"]
       segrwad<-sxw[i,"win"]
       samplevar<-indexsx$variname[indexsx$type=="samplehx" & indexsx$segnum==segchoice]
@@ -134,23 +139,31 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F){
       if (i==1) {
         choice_hx<-0
         rew_hx<-0
+        sxw[(i),"v_l"]<-0
       } else {
         choice_hx<-sxw[(i-1),samplevar]
         rew_hx<-sxw[(i-1),rewvar]
+        sxw[(i),"v_l"]<-rew_hx/sum(sxw[(i-1),indexsx$variname[indexsx$type=="rewardhx"]])
       }
+      sxw[(i),"samphx"]<-choice_hx
+      sxw[(i),"rewhx"]<-rew_hx
+      
       sampleupdate<-choice_hx+1
       rew_update<-(rew_hx+segrwad)/sampleupdate
       sxw[(i),samplevar]<-sampleupdate
       sxw[(i),rewvar]<-rew_update
       sxw[i:length(sxw[[1]]),indexsx$variname]<-sxw[i,indexsx$variname]
       sxw[(i),choicevar]<-1
+      
     }
     if(max(sxw$num_segments) < numseg) {sxw[indexsx$variname[indexsx$segnum > max(sxw$num_segments)]]<-NA}
     if(only_firstfree) {
-      sxw$fristfree<-FALSE
-      sxw$fristfree[max(sxw$num_segments)+1]<-TRUE
+      sxw$firstfree<-FALSE
+      sxw$firstfree[max(sxw$num_segments)+1]<-TRUE
     }
-    for (ix in indexsx$variname) {
+    
+    sxw$u_l<-sxw$samphx/(sxw$trial-1)
+    for (ix in c(indexsx$variname,"samphx","rewhx")) {
       d<-sxw[,ix]
       sxw[paste0(ix,"_lag")]<-dplyr::lag(d)
       sxw[paste0(ix,"_lead")]<-dplyr::lead(d)

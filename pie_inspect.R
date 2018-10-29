@@ -16,12 +16,47 @@ load("pie_data.rdata")
 df <- as.tibble(pie_data_proc$df)
 ff <- as.tibble(pie_firstfree)
 
-ff$chose_unsampled <- ff$ch
 
+df<-df[!as.logical(df$forced_choice),]
 # value sampled on the first free choice as a function of even/uneven sampling -- should be lower in uneven
 
 # how often do they pick the never-sampled option in the uneven condition?
 uff <- ff[ff$even_uneven==1,]
+
+# inspect relative value and uncertainty signals
+df$num_segments <- as.factor(df$num_segments)
+df$show_points <- as.factor(df$show_points)
+
+
+# df$logVrel <- log(df$v_l)
+# df$logUrel <- log(df$u_l)
+
+# log-log value-uncertainty relationship
+ggplot(df,aes(logVrel,logUrel,color = num_segments)) + geom_point() + facet_wrap(~ID)
+
+# linear value-uncertainty relationship
+ggplot(df,aes(v_l,u_l,color = num_segments)) + geom_point() + facet_wrap(~ID)
+
+# do they switch from exploration to exploitation
+ggplot(df,aes(trial, selected_prob,color = num_segments, lty = show_points)) + geom_smooth() + facet_wrap(~ID)
+
+# formal look
+m1 <- lmer(selected_prob ~ num_segments + show_points + trial + (1|ID), df)
+summary(m1)
+car::Anova(m1,'3')
+
+# subjective value
+m2 <- lmer(v_l ~ num_segments * show_points + trial + (1|ID), df)
+summary(m2)
+car::Anova(m2,'3')
+
+
+
+ggplot(df,aes(trial, logUrel,color = num_segments)) + geom_smooth() + facet_wrap(~ID)
+
+
+ggplot(df,aes(trial,v_l,color = selected_segment)) + geom_smooth() + facet_wrap(~ID)
+
 
 
 ggplot(df, aes(x = trial, y = selected_prob, color = as.factor(num_segments))) + geom_smooth(method = "gam") + facet_wrap(ID~show_points,ncol = 2)
