@@ -1,6 +1,6 @@
 ##  inspect data from single subject
 
-setwd("~/Box Sync/skinner/projects_analyses/Project NTC/data")
+setwd("~/code/pie")
 library(readr)
 library(lme4)
 # library(lmerTest)
@@ -10,21 +10,25 @@ library(readr)
 library(multcompView)
 library(stargazer)
 
-# value sampled on the first free choice as a function of even/uneven sampling -- should be lower in uneven
-
-# how often do they pick the never-sampled option in the uneven condition?
-
 #
 load("pie_data.rdata")
 
 df <- as.tibble(pie_data_proc$df)
+ff <- as.tibble(pie_firstfree)
+
+ff$chose_unsampled <- ff$ch
+
+# value sampled on the first free choice as a function of even/uneven sampling -- should be lower in uneven
+
+# how often do they pick the never-sampled option in the uneven condition?
+uff <- ff[ff$even_uneven==1,]
+
 
 ggplot(df, aes(x = trial, y = selected_prob, color = as.factor(num_segments))) + geom_smooth(method = "gam") + facet_wrap(ID~show_points,ncol = 2)
 
 # get lags
 df = df %>% arrange(ID, block_num, trial) %>% group_by(ID, block_num) %>% 
   mutate(
-    win_lag = lag(win),
     choice1 = selected_segment==1,
     choice2 = selected_segment==2,
     choice3 = selected_segment==3,
@@ -33,14 +37,7 @@ df = df %>% arrange(ID, block_num, trial) %>% group_by(ID, block_num) %>%
     choice6 = selected_segment==6,
     choice7 = selected_segment==7,
     choice8 = selected_segment==8,
-    cum1 = cumsum(choice1),
-    cum2 = cumsum(choice2),
-    cum3 = cumsum(choice3),
-    cum4 = cumsum(choice4),
-    cum5 = cumsum(choice5),
-    cum6 = cumsum(choice6),
-    cum7 = cumsum(choice7),
-    cum8 = cumsum(choice8)
+    s1lag = lag(samplehx1),
     # least_sampled = which(c(cum1,cum2,cum3,cum4))
       ) %>% ungroup()
 df = df %>% arrange(ID, trial)
