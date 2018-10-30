@@ -115,7 +115,8 @@ pie_getdata<-function(boxsyncpath=NULL){
 }
 
 pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,usemeanprior=F){
-  print(unique(ss_pie_raw$ID))
+  piedata_raw$list[[which(sapply(piedata_raw$list, function(z){unique(z$ID)})=="220492")]]->ss_pie_raw
+  message(unique(ss_pie_raw$ID))
   numseg<-max(ss_pie_raw$num_segments)
   ss_pie_scon<-split(ss_pie_raw,ss_pie_raw$con_num)
   indexsx<-rbind(data.frame(segnum=1:numseg,type="samplehx"),
@@ -129,6 +130,7 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
   assign("choicevars",indexsx$variname[indexsx$type=="choice"],envir = commenvir)
   
   ss_proc<-do.call(rbind,lapply(ss_pie_scon,function(sx){
+    ss_pie_scon[[1]]->sx
     #Okay REDESIGN!!!!
     sxw<-sx[which(sx$RT!=0),]
     
@@ -152,9 +154,9 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
       }),envir = storaget)
       #Value calculated by bayes rule
       assign("vbayarray",sapply(1:numseg, function(y) {
-        nreward<-sum(sxw[1:i,"win"])
-        nchoice<-length(which(sxw[1:i,"selected_segment"]==y))
-        nchoicegivenrewar<-length(which(sxw[1:i,"selected_segment"]==y & sxw[1:i,"win"]==1))
+        nreward<-sum(sxw[1:i-1,"win"])
+        nchoice<-length(which(sxw[1:i-1,"selected_segment"]==y))
+        nchoicegivenrewar<-length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==1))
         ntotal<-i
         pcgivenreward<-ifelse(nreward==0,0,(nchoicegivenrewar / nreward))
         if(usemeanprior){
@@ -173,6 +175,7 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
       return(ext_df)
     }) 
     sxw<-cbind(sxw,do.call(rbind,ext))
+    rownames(sxw)<-NULL
     if(max(sxw$num_segments) < numseg) {sxw[indexsx$variname[indexsx$segnum > max(sxw$num_segments)]]<-NA}
     if(only_firstfree) {
       sxw$firstfree<-FALSE
