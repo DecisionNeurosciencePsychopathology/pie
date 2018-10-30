@@ -179,7 +179,7 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
       sxw$firstfree[max(sxw$num_segments)+1]<-TRUE
     }
     
-    sxw$u_l<-1-(sxw$samplehx_selected/(sxw$trial-1))
+    sxw$u<-1-(sxw$samplehx_selected/(sxw$trial-1))
     # for (ix in c(indexsx$variname,"samphx","rewhx")) {
     #   d<-sxw[,ix]
     #   sxw[paste0(ix,"_lag")]<-dplyr::lag(d)
