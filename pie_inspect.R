@@ -71,8 +71,7 @@ df = df %>% arrange(ID, block_num, trial) %>% group_by(ID, block_num) %>%
     choice5 = selected_segment==5,
     choice6 = selected_segment==6,
     choice7 = selected_segment==7,
-    choice8 = selected_segment==8,
-    s1lag = lag(samplehx1),
+    choice8 = selected_segment==8
     # least_sampled = which(c(cum1,cum2,cum3,cum4))
       ) %>% ungroup()
 df = df %>% arrange(ID, trial)
