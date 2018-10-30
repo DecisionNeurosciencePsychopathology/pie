@@ -44,10 +44,10 @@ ggplot(df,aes(v_l,u_l,color = num_segments)) + geom_point() + facet_wrap(~ID)
 # do they switch from exploration to exploitation
 ggplot(df,aes(trial, selected_prob,color = num_segments, lty = show_points)) + geom_smooth() + facet_wrap(~ID)
 ggplot(df,aes(trial, selected_prob,color = num_segments, lty = show_points)) + 
-  geom_smooth(method = 'gam')
+  geom_smooth(method = 'loess')
 
-ggplot(df,aes(trial, v_l,color = num_segments, lty = show_points)) + 
-  geom_smooth(method = 'gam')
+ggplot(df,aes(trial, v_bayes,color = num_segments, lty = forced_sampling)) + 
+  geom_smooth(method = 'loess') + facet_wrap(~ID)
 
 # formal look
 m1 <- lmer(selected_prob ~ num_segments * show_points + trial + (1|ID), df)
@@ -59,10 +59,16 @@ m2 <- lmer(v_l ~ num_segments * show_points + trial + (1|ID), df)
 summary(m2)
 car::Anova(m2,'3')
 
+m3 <- lmer(v_bayes ~ num_segments * show_points + trial + (1|ID), df)
+summary(m3)
+car::Anova(m3,'3')
 
+m4 <- lmer(u_l ~ num_segments * show_points * trial + (1|ID), df)
+summary(m4)
+car::Anova(m4,'3')
 
 ggplot(df,aes(trial, u_l,color = num_segments)) + geom_smooth(method = 'gam') + facet_wrap(~ID)
-ggplot(df,aes(trial, -u_l,color = num_segments, lty = show_points)) + geom_smooth(method = 'gam')
+ggplot(df,aes(trial, 1-u_l,color = num_segments, lty = show_points)) + geom_smooth(method = 'gam')
 
 ggplot(ff,aes(forced_sampling,samphx_lag,color = show_points, shape = show_points)) + geom_jitter() + facet_wrap(~num_segments)
 
