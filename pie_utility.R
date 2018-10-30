@@ -123,8 +123,11 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F){
                    data.frame(segnum=1:numseg,type="rewardhx"),
                    data.frame(segnum=1:numseg,type="choice"))
     indexsx$variname<-paste0(indexsx$type,indexsx$segnum)
-    tw<-as.data.frame(as.list(rep(0,3*numseg)))
-    names(tw)<-indexsx$variname
+    tw1<-as.data.frame(as.list(rep(1/unique(sx$num_segments),1*numseg)))
+    names(tw1)<-indexsx$variname[indexsx$type=="rewardhx"]
+    tw2<-as.data.frame(as.list(rep(0,2*numseg)))
+    names(tw2)<-indexsx$variname[indexsx$type!="rewardhx"]
+    tw<-cbind(tw1,tw2)
     sxw<-merge(sx,tw,all = T)
     sxw$samphx<-NA
     sxw$rewhx<-NA
@@ -138,13 +141,21 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F){
       choicevar<-indexsx$variname[indexsx$type=="choice" & indexsx$segnum==segchoice]
       if (i==1) {
         choice_hx<-0
-        rew_hx<-0
-        sxw[(i),"v_l"]<-0
+        rew_hx<-1/unique(sx$num_segments)
+        sxw[(i),"v_l"]<-1/unique(sx$num_segments)
       } else {
         choice_hx<-sxw[(i-1),samplevar]
         rew_hx<-sxw[(i-1),rewvar]
         sxw[(i),"v_l"]<-rew_hx/sum(sxw[(i-1),indexsx$variname[indexsx$type=="rewardhx"]])
       }
+      #Calculate with bayes learner rule:
+      nreward<-sum(sxw[1:i,"win"])
+      nchoice<-length(which(sxw[1:i,"selected_segment"]==segchoice))
+      nchoicegivenrewar<-length(which(sxw[1:i,"selected_segment"]==segchoice & sxw[1:i,"win"]==1))
+      ntotal<-i
+      sxw[(i),"v_bayes"]<-(nchoicegivenrewar / nchoice)
+      
+      
       sxw[(i),"samphx"]<-choice_hx
       sxw[(i),"rewhx"]<-rew_hx
       
