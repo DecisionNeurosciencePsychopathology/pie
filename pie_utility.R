@@ -115,76 +115,77 @@ pie_getdata<-function(boxsyncpath=NULL){
 }
 
 pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,usemeanprior=F){
-  #print(unique(ss_pie_raw$ID))
+  print(unique(ss_pie_raw$ID))
   numseg<-max(ss_pie_raw$num_segments)
   ss_pie_scon<-split(ss_pie_raw,ss_pie_raw$con_num)
   indexsx<-rbind(data.frame(segnum=1:numseg,type="samplehx"),
-                 data.frame(segnum=1:numseg,type="rewardhx"),
+                 #data.frame(segnum=1:numseg,type="rewardhx"),
+                 data.frame(segnum=1:numseg,type="v_bayes"),
                  data.frame(segnum=1:numseg,type="choice"))
   indexsx$variname<-paste0(indexsx$type,indexsx$segnum)
+  commenvir<-as.environment(list())
+  assign("vbayvars",indexsx$variname[indexsx$type=="v_bayes"],envir = commenvir)
+  assign("samplehxvars",indexsx$variname[indexsx$type=="samplehx"],envir = commenvir)
+  assign("choicevars",indexsx$variname[indexsx$type=="choice"],envir = commenvir)
+  
   ss_proc<-do.call(rbind,lapply(ss_pie_scon,function(sx){
-    tw1<-as.data.frame(as.list(rep(1/unique(sx$num_segments),1*numseg)))
-    names(tw1)<-indexsx$variname[indexsx$type=="rewardhx"]
-    tw2<-as.data.frame(as.list(rep(0,2*numseg)))
-    names(tw2)<-indexsx$variname[indexsx$type!="rewardhx"]
-    tw<-cbind(tw1,tw2)
-    sxw<-merge(sx,tw,all = T)
-    sxw$samphx<-NA
-    sxw$rewhx<-NA
-    sxw<-sxw[which(sxw$RT!=0),]
-    for (i in sxw$trial) {
+    #Okay REDESIGN!!!!
+    sxw<-sx[which(sx$RT!=0),]
+    
+    ext<-lapply(sxw$trial,function(i){
       #print(i)
+      storaget<-as.environment(list())
+      
       segchoice<-sxw[i,"selected_segment"]
       segrwad<-sxw[i,"win"]
-      samplevar<-indexsx$variname[indexsx$type=="samplehx" & indexsx$segnum==segchoice]
-      rewvar<-indexsx$variname[indexsx$type=="rewardhx" & indexsx$segnum==segchoice]
-      choicevar<-indexsx$variname[indexsx$type=="choice" & indexsx$segnum==segchoice]
-      if (i==1) {
-        choice_hx<-0
-        rew_hx<-mean(sxw$selected_prob) #Set prior probability here;
-        sxw[(i),"v_l"]<-1/unique(sx$num_segments)
-      } else {
-        choice_hx<-sxw[(i-1),samplevar]
-        rew_hx<-sxw[(i-1),rewvar]
-        sxw[(i),"v_l"]<-rew_hx/sum(sxw[(i-1),indexsx$variname[indexsx$type=="rewardhx"]])
-      }
-      #Calculate with bayes learner rule:
-      nreward<-sum(sxw[1:i,"win"])
-      nchoice<-length(which(sxw[1:i,"selected_segment"]==segchoice))
-      nchoicegivenrewar<-length(which(sxw[1:i,"selected_segment"]==segchoice & sxw[1:i,"win"]==1))
-      ntotal<-i
-      pcgivenreward<-ifelse(nreward==0,0,(nchoicegivenrewar / nreward))
-      if(usemeanprior){
-      preward<-mean(sxw$selected_prob)} else {preward<-nreward/ntotal}
-      sxw[(i),"v_bayes"]<-(pcgivenreward * preward) / (nchoice/ntotal)
-      #Old calculation
-      #sxw[(i),"v_bayes"]<-(nchoicegivenrewar / nchoice)
-      #debug
-      sxw[c("trial","selected_segment","win","v_bayes")]
       
-      sxw[(i),"samphx"]<-choice_hx
-      sxw[(i),"rewhx"]<-rew_hx
+      #Current Choice;
+      choicearray<-rep(0,numseg)
+      choicearray[segchoice]<-1
+      assign("choicearray",choicearray,envir = storaget)
+      #Past Sample History;
+      assign("samplehxarray",sapply(1:numseg,function(xj){
+        if(i!=1){
+          return(length(which(sxw[1:(i-1),"selected_segment"]==xj)))}else{
+            return(0)
+          }
+      }),envir = storaget)
+      #Value calculated by bayes rule
+      assign("vbayarray",sapply(1:numseg, function(y) {
+        nreward<-sum(sxw[1:i,"win"])
+        nchoice<-length(which(sxw[1:i,"selected_segment"]==y))
+        nchoicegivenrewar<-length(which(sxw[1:i,"selected_segment"]==y & sxw[1:i,"win"]==1))
+        ntotal<-i
+        pcgivenreward<-ifelse(nreward==0,0,(nchoicegivenrewar / nreward))
+        if(usemeanprior){
+          preward<-mean(sxw$selected_prob)} else {preward<-nreward/ntotal}
+        pchoice<-(nchoice/ntotal)
+        if(pchoice!=0){
+          v_bayes <- (pcgivenreward * preward) / pchoice
+        }else{v_bayes <- 0}
+        return(v_bayes)}),envir = storaget)
       
-      sampleupdate<-choice_hx+1
-      rew_update<-(rew_hx+segrwad)/sampleupdate
-      sxw[(i),samplevar]<-sampleupdate
-      sxw[(i),rewvar]<-rew_update
-      sxw[i:length(sxw[[1]]),indexsx$variname]<-sxw[i,indexsx$variname]
-      sxw[(i),choicevar]<-1
-      
-    }
+      ext_df<-do.call(cbind,lapply(c("vbay","samplehx","choice"),function(jx) {
+        arrayx<-as.data.frame(as.list(get(paste0(jx,"array"),envir = storaget)),col.names = get(paste0(jx,"vars"),envir = commenvir))
+        selectedx<-as.data.frame(as.list(get(paste0(jx,"array"),envir = storaget)[segchoice]),col.names = paste0(jx,"_selected"))
+        return(cbind(arrayx,selectedx))
+      }))
+      return(ext_df)
+    }) 
+    sxw<-cbind(sxw,do.call(rbind,ext))
     if(max(sxw$num_segments) < numseg) {sxw[indexsx$variname[indexsx$segnum > max(sxw$num_segments)]]<-NA}
     if(only_firstfree) {
       sxw$firstfree<-FALSE
       sxw$firstfree[max(sxw$num_segments)+1]<-TRUE
     }
     
-    sxw$u_l<-sxw$samphx/(sxw$trial-1)
-    for (ix in c(indexsx$variname,"samphx","rewhx")) {
-      d<-sxw[,ix]
-      sxw[paste0(ix,"_lag")]<-dplyr::lag(d)
-      sxw[paste0(ix,"_lead")]<-dplyr::lead(d)
-    }
+    sxw$u_l<-1-(sxw$samplehx_selected/(sxw$trial-1))
+    # for (ix in c(indexsx$variname,"samphx","rewhx")) {
+    #   d<-sxw[,ix]
+    #   sxw[paste0(ix,"_lag")]<-dplyr::lag(d)
+    #   sxw[paste0(ix,"_lead")]<-dplyr::lead(d)
+    # }
+    #print(length(sxw))
     return(sxw)
   }))
   
