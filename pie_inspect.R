@@ -40,22 +40,12 @@ fdf<-df[!as.logical(df$forced_choice),]
 
 ff <- as.tibble(df[(df$trial==5 & df$num_segments==4) | (df$trial==9 & df$num_segments==8),])
 
-# df$logVrel <- log(df$v_l)
-# df$logUrel <- log(df$u)
-gridExtra::grid.arrange(
-ggplot(fdf,aes(trial,v_bayes1,color = num_segments, lty = show_points)) + geom_smooth(),
-ggplot(fdf,aes(trial,v_bayes2,color = num_segments, lty = show_points)) + geom_smooth(),
-ggplot(fdf,aes(trial,v_bayes3,color = num_segments, lty = show_points)) + geom_smooth(),
-ggplot(fdf,aes(trial,v_bayes4,color = num_segments, lty = show_points)) + geom_smooth(),
-ggplot(fdf,aes(trial,v_bayes5,color = num_segments, lty = show_points)) + geom_smooth(),
-ggplot(fdf,aes(trial,v_bayes6,color = num_segments, lty = show_points)) + geom_smooth(),
-ggplot(fdf,aes(trial,v_bayes7,color = num_segments, lty = show_points)) + geom_smooth(),
-ggplot(fdf,aes(trial,v_bayes8,color = num_segments, lty = show_points)) + geom_smooth(),
-nrow=4)
+
 varyingvars<-names(df)[grep("[1-9]",names(df))]
 ldf<-reshape2::melt(fdf, measure.vars = varyingvars)
 ldf$type<-gsub("[0-9]*","",ldf$variable)
 ldf <- ldf[ldf$type=='v_bayes',]
+
 ggplot(ldf,aes(trial,value, color = variable)) + geom_smooth() + facet_wrap(~num_segments)
 
 # their exploitation is helped by show_points in 8
@@ -65,7 +55,7 @@ ggplot(fdf,aes(trial,v_diff,color = num_segments, lty = show_points)) + geom_smo
 
 
 # linear value-uncertainty relationship
-ggplot(df,aes(v_l,u,color = num_segments)) + geom_point() + facet_wrap(~ID)
+ggplot(df,aes(vbay_selected,u,color = num_segments)) + geom_point() + facet_wrap(~ID)
 
 # do they switch from exploration to exploitation
 ggplot(df,aes(trial, selected_prob,color = num_segments, lty = show_points)) + geom_smooth() + facet_wrap(~ID)
@@ -99,6 +89,11 @@ ggplot(df,aes(trial, 1-u,color = num_segments, lty = show_points)) + geom_smooth
 
 ######
 # Find the Bob Wilson uncertainty-driven exploration effect
-ggplot(ff,aes(forced_sampling,samplehx_selected,color = vbay_selected)) + geom_jitter() + facet_wrap(~num_segments)
+ggplot(ff[ff$vbay_selected==0,],aes(forced_sampling,samplehx_selected,color = vbay_selected)) + geom_jitter() + facet_wrap(show_points~num_segments)
 ggplot(ff,aes(forced_sampling,vbay_selected,color = show_points)) + geom_jitter() + facet_wrap(~num_segments)
+
+# run a logistic model
+um1 <- glmer(samplehx_selected==0 ~ num_segments * show_points + (1|ID),ff[ff$forced_sampling=='uneven',],
+             family = 'binomial')
+summary(um1)
 

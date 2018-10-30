@@ -115,7 +115,7 @@ pie_getdata<-function(boxsyncpath=NULL){
 }
 
 pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,usemeanprior=F){
-  piedata_raw$list[[which(sapply(piedata_raw$list, function(z){unique(z$ID)})=="220492")]]->ss_pie_raw
+  # piedata_raw$list[[which(sapply(piedata_raw$list, function(z){unique(z$ID)})=="220492")]]->ss_pie_raw
   message(unique(ss_pie_raw$ID))
   numseg<-max(ss_pie_raw$num_segments)
   ss_pie_scon<-split(ss_pie_raw,ss_pie_raw$con_num)
@@ -130,7 +130,7 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
   assign("choicevars",indexsx$variname[indexsx$type=="choice"],envir = commenvir)
   
   ss_proc<-do.call(rbind,lapply(ss_pie_scon,function(sx){
-    ss_pie_scon[[1]]->sx
+    # ss_pie_scon[[1]]->sx
     #Okay REDESIGN!!!!
     sxw<-sx[which(sx$RT!=0),]
     
