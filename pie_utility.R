@@ -114,15 +114,15 @@ pie_getdata<-function(boxsyncpath=NULL){
   return(list(list=piedata_raw,df=piedata_raw_all))
 }
 
-pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F){
-  print(unique(ss_pie_raw$ID))
+pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,usemeanprior=F){
+  #print(unique(ss_pie_raw$ID))
   numseg<-max(ss_pie_raw$num_segments)
   ss_pie_scon<-split(ss_pie_raw,ss_pie_raw$con_num)
+  indexsx<-rbind(data.frame(segnum=1:numseg,type="samplehx"),
+                 data.frame(segnum=1:numseg,type="rewardhx"),
+                 data.frame(segnum=1:numseg,type="choice"))
+  indexsx$variname<-paste0(indexsx$type,indexsx$segnum)
   ss_proc<-do.call(rbind,lapply(ss_pie_scon,function(sx){
-    indexsx<-rbind(data.frame(segnum=1:numseg,type="samplehx"),
-                   data.frame(segnum=1:numseg,type="rewardhx"),
-                   data.frame(segnum=1:numseg,type="choice"))
-    indexsx$variname<-paste0(indexsx$type,indexsx$segnum)
     tw1<-as.data.frame(as.list(rep(1/unique(sx$num_segments),1*numseg)))
     names(tw1)<-indexsx$variname[indexsx$type=="rewardhx"]
     tw2<-as.data.frame(as.list(rep(0,2*numseg)))
@@ -133,7 +133,7 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F){
     sxw$rewhx<-NA
     sxw<-sxw[which(sxw$RT!=0),]
     for (i in sxw$trial) {
-      print(i)
+      #print(i)
       segchoice<-sxw[i,"selected_segment"]
       segrwad<-sxw[i,"win"]
       samplevar<-indexsx$variname[indexsx$type=="samplehx" & indexsx$segnum==segchoice]
@@ -141,7 +141,7 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F){
       choicevar<-indexsx$variname[indexsx$type=="choice" & indexsx$segnum==segchoice]
       if (i==1) {
         choice_hx<-0
-        rew_hx<-1/unique(sx$num_segments)
+        rew_hx<-mean(sxw$selected_prob) #Set prior probability here;
         sxw[(i),"v_l"]<-1/unique(sx$num_segments)
       } else {
         choice_hx<-sxw[(i-1),samplevar]
@@ -153,8 +153,14 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F){
       nchoice<-length(which(sxw[1:i,"selected_segment"]==segchoice))
       nchoicegivenrewar<-length(which(sxw[1:i,"selected_segment"]==segchoice & sxw[1:i,"win"]==1))
       ntotal<-i
-      sxw[(i),"v_bayes"]<-(nchoicegivenrewar / nchoice)
-      
+      pcgivenreward<-ifelse(nreward==0,0,(nchoicegivenrewar / nreward))
+      if(usemeanprior){
+      preward<-mean(sxw$selected_prob)} else {preward<-nreward/ntotal}
+      sxw[(i),"v_bayes"]<-(pcgivenreward * preward) / (nchoice/ntotal)
+      #Old calculation
+      #sxw[(i),"v_bayes"]<-(nchoicegivenrewar / nchoice)
+      #debug
+      sxw[c("trial","selected_segment","win","v_bayes")]
       
       sxw[(i),"samphx"]<-choice_hx
       sxw[(i),"rewhx"]<-rew_hx
