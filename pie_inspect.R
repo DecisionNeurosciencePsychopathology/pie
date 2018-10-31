@@ -27,8 +27,8 @@ df$forced_sampling <- NA
 df$forced_sampling[df$even_uneven==0] <- 'uneven'
 df$forced_sampling[df$even_uneven==1] <- 'even'
 
-inx<-df[names(df)[grep("samplehx[0-9]",names(df))]]==0
-df[names(df)[grep("v_bayes[0-9]",names(df))]][inx]<-NA
+# inx<-df[names(df)[grep("samplehx[0-9]",names(df))]]==0
+# df[names(df)[grep("v_bayes[0-9]",names(df))]][inx]<-NA
 
 # calculate different value flavors
 
