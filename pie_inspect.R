@@ -46,45 +46,53 @@ ldf<-reshape2::melt(fdf, measure.vars = varyingvars)
 ldf$type<-gsub("[0-9]*","",ldf$variable)
 ldf <- ldf[ldf$type=='v_bayes',]
 
+# subjective Bayesian probabilities by segment
 ggplot(ldf,aes(trial,value, color = variable)) + geom_smooth() + facet_wrap(~num_segments)
 
 # their exploitation is helped by show_points in 8
+# selected value
 ggplot(fdf,aes(trial,vbay_selected,color = num_segments, lty = show_points)) + geom_smooth(method = "loess") 
-
+ggplot(fdf,aes(trial, vbay_selected,color = num_segments, lty = forced_sampling)) + 
+  geom_smooth(method = 'loess') + facet_wrap(~ID)
+# difference from mean value
 ggplot(fdf,aes(trial,v_diff,color = num_segments, lty = show_points)) + geom_smooth(method = "loess") 
+# objective value
+ggplot(fdf,aes(trial, selected_prob,color = num_segments, lty = show_points)) + geom_smooth() + facet_wrap(~ID)
+ggplot(fdf,aes(trial, selected_prob,color = num_segments, lty = show_points)) + 
+  geom_smooth(method = 'loess')
 
 
 # linear value-uncertainty relationship
-ggplot(df,aes(vbay_selected,u,color = num_segments)) + geom_point() + facet_wrap(~ID)
+ggplot(fdf,aes(vbay_selected,u,color = num_segments, lty = show_points)) + geom_smooth(method = "gam") + facet_wrap(~ID)
+ggplot(fdf,aes(vbay_selected,u,color = num_segments, lty = show_points)) + geom_smooth(method = "gam")
+
+# right after forced sampling
+ggplot(ff,aes(vbay_selected,u,color = num_segments, lty = show_points)) + geom_smooth(method = "gam")
+
+ggplot(ff,aes(selected_prob,u,color = num_segments, lty = show_points)) + geom_smooth(method = "gam")
 
 # do they switch from exploration to exploitation
-ggplot(df,aes(trial, selected_prob,color = num_segments, lty = show_points)) + geom_smooth() + facet_wrap(~ID)
-ggplot(df,aes(trial, selected_prob,color = num_segments, lty = show_points)) + 
-  geom_smooth(method = 'loess')
-
-ggplot(df,aes(trial, v_bayes,color = num_segments, lty = forced_sampling)) + 
-  geom_smooth(method = 'loess') + facet_wrap(~ID)
 
 # formal look
-m1 <- lmer(selected_prob ~ num_segments * show_points + trial + (1|ID), df)
+m1 <- lmer(selected_prob ~ num_segments * show_points + trial + (1|ID), fdf)
 summary(m1)
 car::Anova(m1,'3')
 
 # subjective value
-m2 <- lmer(v_l ~ num_segments * show_points + trial + (1|ID), df)
+m2 <- lmer(vbay_selected ~ num_segments * show_points + trial + (1|ID), fdf)
 summary(m2)
 car::Anova(m2,'3')
 
-m3 <- lmer(v_bayes ~ num_segments * show_points + trial + (1|ID), df)
-summary(m3)
-car::Anova(m3,'3')
+m3diff <- lmer(v_diff ~ num_segments * show_points + trial + (1|ID), fdf)
+summary(m3diff)
+car::Anova(m3diff,'3')
 
-m4 <- lmer(u ~ num_segments * show_points * trial + (1|ID), df)
+
+m4 <- lmer(u ~ num_segments * show_points * trial + (1|ID), fdf)
 summary(m4)
 car::Anova(m4,'3')
 
-ggplot(df,aes(trial, u,color = num_segments)) + geom_smooth(method = 'gam') + facet_wrap(~ID)
-ggplot(df,aes(trial, 1-u,color = num_segments, lty = show_points)) + geom_smooth(method = 'gam')
+ggplot(fdf,aes(trial, u,color = num_segments, lty = show_points)) + geom_smooth(method = 'gam')
 
 
 ######
@@ -97,3 +105,6 @@ um1 <- glmer(samplehx_selected==0 ~ num_segments * show_points + (1|ID),ff[ff$fo
              family = 'binomial')
 summary(um1)
 
+um2 <- lmer(vbay_selected ~ forced_sampling * num_segments * show_points + (1|ID),ff[,])
+summary(um2)
+car::Anova(um2,'3')
