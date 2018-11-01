@@ -166,7 +166,7 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
           v_bayes <- (pcgivenreward * preward) / pchoice
         }else{v_bayes <- 0}
         return(v_bayes)}),envir = storaget)
-      
+      storaget$vbayarray[storaget$samplehxarray==0]<-NA
       ext_df<-do.call(cbind,lapply(c("vbay","samplehx","choice"),function(jx) {
         arrayx<-as.data.frame(as.list(get(paste0(jx,"array"),envir = storaget)),col.names = get(paste0(jx,"vars"),envir = commenvir))
         selectedx<-as.data.frame(as.list(get(paste0(jx,"array"),envir = storaget)[segchoice]),col.names = paste0(jx,"_selected"))
