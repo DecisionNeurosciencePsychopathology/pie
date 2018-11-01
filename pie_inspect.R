@@ -39,7 +39,7 @@ df$v_diff <- df$vbay_selected - df$v_mean
 fdf<-df[!as.logical(df$forced_choice),]
 
 ff <- as.tibble(df[(df$trial==5 & df$num_segments==4) | (df$trial==9 & df$num_segments==8),])
-
+uff <- ff[ff$forced_sampling=='uneven',]
 
 varyingvars<-names(df)[grep("[1-9]",names(df))]
 ldf<-reshape2::melt(fdf, measure.vars = varyingvars)
@@ -98,13 +98,33 @@ ggplot(fdf,aes(trial, u,color = num_segments, lty = show_points)) + geom_smooth(
 ######
 # Find the Bob Wilson uncertainty-driven exploration effect
 ggplot(ff[ff$vbay_selected==0,],aes(forced_sampling,samplehx_selected,color = vbay_selected)) + geom_jitter() + facet_wrap(show_points~num_segments)
-ggplot(ff,aes(forced_sampling,vbay_selected,color = show_points)) + geom_jitter() + facet_wrap(~num_segments)
+ggplot(ff,aes(forced_sampling,u==1,color = vbay_selected)) + geom_jitter(width = .4, height = .03 ) + 
+   facet_wrap(~num_segments)
 
 # run a logistic model
-um1 <- glmer(samplehx_selected==0 ~ num_segments * show_points + (1|ID),ff[ff$forced_sampling=='uneven',],
-             family = 'binomial')
+um1 <- glmer(samplehx_selected==0 ~ num_segments*show_points + (1|ID),uff[,],
+             family = binomial(link = "logit"))
 summary(um1)
 
-um2 <- lmer(vbay_selected ~ forced_sampling * num_segments * show_points + (1|ID),ff[,])
+um2 <- lmer(u ~ forced_sampling * num_segments + forced_sampling * vbay_selected  
+            + forced_sampling * show_points  + vbay_selected *  show_points + (1|ID),ff[,])
 summary(um2)
 car::Anova(um2,'3')
+
+um3 <- lmer(u ~ vbay_selected * num_segments + show_points * num_segments + (1|ID),uff)
+summary(um3)
+car::Anova(um3,'3')
+
+# compare observed to expected exploration -- no clear prediction for expected because of value confound
+u4plus <- sum(uff$u[uff$num_segments==4]==1)
+u4minus <- sum(uff$u[uff$num_segments==4]<1)
+observed = c(u4plus,u4minus)
+expected = c(.25,.75)
+chisq.test(x = observed, p = expected)
+
+u8plus <- sum(uff$u[uff$num_segments==8]==1)
+u8minus <- sum(uff$u[uff$num_segments==8]<1)
+observed = c(u8plus,u8minus)
+expected = c(.375,1-.375)
+chisq.test(x = observed, p = expected)
+
