@@ -35,6 +35,8 @@ df$forced_sampling[df$even_uneven==1] <- 'even'
 df$v_mean <- rowMeans(df[c('v_bayes1','v_bayes2','v_bayes3', 'v_bayes4',
                            'v_bayes5','v_bayes6','v_bayes7','v_bayes8')], na.rm =  T)
 df$v_diff <- df$vbay_selected - df$v_mean
+df$v_max <- apply(df[,c('v_bayes1','v_bayes2','v_bayes3', 'v_bayes4',
+                       'v_bayes5','v_bayes6','v_bayes7','v_bayes8')], 1, max, na.rm = T)
 
 fdf<-df[!as.logical(df$forced_choice),]
 
@@ -52,24 +54,26 @@ ggplot(ldf,aes(trial,value, color = variable)) + geom_smooth() + facet_wrap(~num
 # their exploitation is helped by show_points in 8
 # selected value
 ggplot(fdf,aes(trial,vbay_selected,color = num_segments, lty = show_points)) + geom_smooth(method = "loess") 
+# initial values are inflated in even samplign by design
 ggplot(fdf,aes(trial, vbay_selected,color = num_segments, lty = forced_sampling)) + 
-  geom_smooth(method = 'loess') + facet_wrap(~ID)
+  geom_smooth(method = 'loess') #+ facet_wrap(~ID)
 # difference from mean value
 ggplot(fdf,aes(trial,v_diff,color = num_segments, lty = show_points)) + geom_smooth(method = "loess") 
-# objective value
+# objective value/probability
 ggplot(fdf,aes(trial, selected_prob,color = num_segments, lty = show_points)) + geom_smooth() + facet_wrap(~ID)
 ggplot(fdf,aes(trial, selected_prob,color = num_segments, lty = show_points)) + 
   geom_smooth(method = 'loess')
 
 
-# linear value-uncertainty relationship
-ggplot(fdf,aes(vbay_selected,u,color = num_segments, lty = show_points)) + geom_smooth(method = "gam") + facet_wrap(~ID)
-ggplot(fdf,aes(vbay_selected,u,color = num_segments, lty = show_points)) + geom_smooth(method = "gam")
+# value-uncertainty relationship
+ggplot(fdf,aes(vbay_selected,u,color = num_segments, lty = show_points)) + geom_smooth(method = "loess") + facet_wrap(~ID)
+ggplot(fdf,aes(vbay_selected,u,color = num_segments, lty = show_points)) + geom_smooth(method = "loess")
+# full data 
+ggplot(fdf,aes(vbay_selected,u, color = num_segments, shape = show_points)) + geom_point() + facet_wrap(~ID)
 
-# right after forced sampling
-ggplot(ff,aes(vbay_selected,u,color = num_segments, lty = show_points)) + geom_smooth(method = "gam")
-
-ggplot(ff,aes(selected_prob,u,color = num_segments, lty = show_points)) + geom_smooth(method = "gam")
+# # right after forced sampling
+# ggplot(ff,aes(vbay_selected,u,color = num_segments, lty = show_points)) + geom_smooth(method = "gam")
+# ggplot(ff,aes(selected_prob,u,color = num_segments, lty = show_points)) + geom_smooth(method = "gam")
 
 # do they switch from exploration to exploitation
 
@@ -78,7 +82,7 @@ m1 <- lmer(selected_prob ~ num_segments * show_points + trial + (1|ID), fdf)
 summary(m1)
 car::Anova(m1,'3')
 
-# subjective value
+# ideal Bayesian observer value
 m2 <- lmer(vbay_selected ~ num_segments * show_points + trial + (1|ID), fdf)
 summary(m2)
 car::Anova(m2,'3')
@@ -91,6 +95,10 @@ car::Anova(m3diff,'3')
 m4 <- lmer(u ~ num_segments * show_points * trial + (1|ID), fdf)
 summary(m4)
 car::Anova(m4,'3')
+m4v <- lmer(u ~ v_max + num_segments * show_points * trial + (1|ID), fdf)
+summary(m4v)
+car::Anova(m4v,'3')
+anova(m4,m4v)
 
 ggplot(fdf,aes(trial, u,color = num_segments, lty = show_points)) + geom_smooth(method = 'gam')
 
