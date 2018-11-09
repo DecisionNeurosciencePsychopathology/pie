@@ -119,15 +119,16 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
   message(unique(ss_pie_raw$ID))
   numseg<-max(ss_pie_raw$num_segments)
   ss_pie_scon<-split(ss_pie_raw,ss_pie_raw$con_num)
-  indexsx<-rbind(data.frame(segnum=1:numseg,type="samplehx"),
-                 #data.frame(segnum=1:numseg,type="rewardhx"),
-                 data.frame(segnum=1:numseg,type="v_bayes"),
-                 data.frame(segnum=1:numseg,type="choice"))
-  indexsx$variname<-paste0(indexsx$type,indexsx$segnum)
   commenvir<-as.environment(list())
-  assign("vbayvars",indexsx$variname[indexsx$type=="v_bayes"],envir = commenvir)
-  assign("samplehxvars",indexsx$variname[indexsx$type=="samplehx"],envir = commenvir)
-  assign("choicevars",indexsx$variname[indexsx$type=="choice"],envir = commenvir)
+  
+  #Set up what to get:
+  todolist<-c("samplehx","v_bayes","choice","alpha","beta","dBetaMu","dBetaSigmaSquare")
+  indexsx<-do.call(rbind,lapply(todolist,function(xj) {
+    inkd<-data.frame(segnum=1:numseg,type=xj)
+    inkd$variname<-paste0(inkd$type,inkd$segnum)
+    assign(paste0(xj,"vars"),inkd$variname,envir = commenvir)
+    return(inkd)
+    }))
   
   ss_proc<-do.call(rbind,lapply(ss_pie_scon,function(sx){
     # ss_pie_scon[[1]]->sx
@@ -137,7 +138,7 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
     ext<-lapply(sxw$trial,function(i){
       #print(i)
       storaget<-as.environment(list())
-      
+
       segchoice<-sxw[i,"selected_segment"]
       segrwad<-sxw[i,"win"]
       
@@ -145,6 +146,7 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
       choicearray<-rep(0,numseg)
       choicearray[segchoice]<-1
       assign("choicearray",choicearray,envir = storaget)
+      
       #Past Sample History;
       assign("samplehxarray",sapply(1:numseg,function(xj){
         if(i!=1){
@@ -153,7 +155,7 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
           }
       }),envir = storaget)
       #Value calculated by bayes rule
-      assign("vbayarray",sapply(1:numseg, function(y) {
+      assign("v_bayesarray",sapply(1:numseg, function(y) {
         nreward<-sum(sxw[1:i-1,"win"])
         nchoice<-length(which(sxw[1:i-1,"selected_segment"]==y))
         nchoicegivenrewar<-length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==1))
@@ -167,7 +169,33 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
         }else{v_bayes <- 0}
         return(v_bayes)}),envir = storaget)
       storaget$vbayarray[storaget$samplehxarray==0]<-NA
-      ext_df<-do.call(cbind,lapply(c("vbay","samplehx","choice"),function(jx) {
+      
+      #Use Beta distrubution to calculate value (mean) & uncertrainty (variance)
+      #alpha
+      assign("alphaarray",sapply(1:numseg, function(y) {
+        length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==1))
+      }),envir = storaget)
+      #Beta
+      assign("betaarray",sapply(1:numseg, function(y) {
+        length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==0))
+      }),envir = storaget)
+      
+      #distBetaMean
+      assign("dBetaMuarray",sapply(1:numseg, function(y) {
+        alphax<-length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==1))
+        betax<-length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==0))
+        mu<- ((alphax) / (alphax+betax))
+        return(mu)
+      }),envir = storaget)
+      #distBetaSigmaSquare
+      assign("dBetaSigmaSquarearray",sapply(1:numseg, function(y) {
+        alphax<-length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==1))
+        betax<-length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==0))
+        sigmasquare<-( (alphax * betax) / ((alphax+betax)^2 * (alphax+betax+1)) )
+        return(sigmasquare)
+      }),envir = storaget)
+      
+      ext_df<-do.call(cbind,lapply(todolist,function(jx) {
         arrayx<-as.data.frame(as.list(get(paste0(jx,"array"),envir = storaget)),col.names = get(paste0(jx,"vars"),envir = commenvir))
         selectedx<-as.data.frame(as.list(get(paste0(jx,"array"),envir = storaget)[segchoice]),col.names = paste0(jx,"_selected"))
         return(cbind(arrayx,selectedx))
