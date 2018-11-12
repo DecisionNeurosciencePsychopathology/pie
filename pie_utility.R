@@ -133,10 +133,11 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
   ss_proc<-do.call(rbind,lapply(ss_pie_scon,function(sx){
     # ss_pie_scon[[1]]->sx
     #Okay REDESIGN!!!!
+    #message("block:",unique(sx$block_num))
     sxw<-sx[which(sx$RT!=0),]
     
     ext<-lapply(sxw$trial,function(i){
-      #print(i)
+      #message(i)
       storaget<-as.environment(list())
 
       segchoice<-sxw[i,"selected_segment"]
@@ -185,7 +186,14 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
       ext_df<-do.call(cbind,lapply(todolist,function(jx) {
         arrayx<-as.data.frame(as.list(get(paste0(jx,"array"),envir = storaget)),col.names = get(paste0(jx,"vars"),envir = commenvir))
         selectedx<-as.data.frame(as.list(get(paste0(jx,"array"),envir = storaget)[segchoice]),col.names = paste0(jx,"_selected"))
-        return(cbind(arrayx,selectedx))
+        if(any(!is.na(arrayx))){
+        ismax<-as.data.frame(as.list(arrayx==max(arrayx)),col.names = paste0("ismax_",get(paste0(jx,"vars"),envir = commenvir)))
+        isSelectedMax<-as.data.frame(as.list(ismax[segchoice]),col.names = paste0(jx,"_isSelectedMax"))
+        } else {
+        ismax<-as.data.frame(as.list(arrayx),col.names = paste0("ismax_",get(paste0(jx,"vars"),envir = commenvir)))
+        isSelectedMax<-as.data.frame(as.list(NA),col.names = paste0(jx,"_isSelectedMax"))
+        }
+        return(cbind(arrayx,selectedx,ismax,isSelectedMax))
       }))
       return(ext_df)
     }) 
