@@ -100,15 +100,25 @@ ProcApply<-function(listx=NULL,FUNC=NULL,...) {
 #Pie Specific;
 pie_getdata<-function(boxsyncpath=NULL){
   pieroot<-file.path(boxsyncpath,"skinner","data","matlab task data","pie_task")
-  piedata_raw<-lapply(list.files(path = pieroot,pattern = ".*_outstruct.csv",full.names = T),read.csv)
-  names(piedata_raw)<-gsub("([0-9]+).*$", "\\1",list.files(path = pieroot,pattern = ".*_outstruct.csv"))
+  #piedata_raw<-lapply(list.files(path = pieroot,pattern = ".*_outstruct.csv",full.names = T),read.csv)
+  #names(piedata_raw)<-gsub("([0-9]+).*$", "\\1",list.files(path = pieroot,pattern = ".*_outstruct.csv"))
   
-  piedata_raw<-lapply(gsub("([0-9]+).*$", "\\1",list.files(path = pieroot,pattern = ".*_outstruct.csv")),function(ID){
+  pit_subset<-lapply(gsub("([0-9]+).*$", "\\1",list.files(path = pieroot,pattern = ".*_outstruct.csv")),function(ID){
     rawdata<-read.csv(file.path(pieroot,paste0(ID,"_outstruct.csv")))
     rawdata$ID<-ID
+    rawdata$Source<-"PIT"
+    return(rawdata)
+  })
+  psu_subset<-lapply(gsub("([0-9]+).*$", "\\1",list.files(path = file.path(pieroot,"PSU"),pattern = ".*_outstruct.csv")),function(ID){
+    #message(ID)
+    rawdata<-read.csv(file.path(pieroot,"PSU",paste0(ID,"_outstruct.csv")))
+    rawdata$ID<-ID
+    rawdata$Source<-"PSU"
+    if(is.null(rawdata$RT)) {rawdata$RT<-NA}
     return(rawdata)
   })
   
+  piedata_raw<-c(pit_subset,psu_subset)
   piedata_raw_all<-do.call(rbind,piedata_raw)
   
   return(list(list=piedata_raw,df=piedata_raw_all))
@@ -133,9 +143,10 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
   ss_proc<-do.call(rbind,lapply(ss_pie_scon,function(sx){
     # ss_pie_scon[[1]]->sx
     #Okay REDESIGN!!!!
-    #message("block:",unique(sx$block_num))
+    message("block:",unique(sx$block_num))
+    if(any(!is.na(sx$RT))){
     sxw<-sx[which(sx$RT!=0),]
-    
+    } else {sxw<-sx}
     ext<-lapply(sxw$trial,function(i){
       #message(i)
       storaget<-as.environment(list())
