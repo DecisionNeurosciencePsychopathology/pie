@@ -143,19 +143,14 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
       segrwad<-sxw[i,"win"]
       
       #Current Choice;
-      choicearray<-rep(0,numseg)
-      choicearray[segchoice]<-1
-      assign("choicearray",choicearray,envir = storaget)
-      
-      #Past Sample History;
-      assign("samplehxarray",sapply(1:numseg,function(xj){
+      tej<-do.call(rbind,lapply(1:numseg, function(y) { 
+        #Sample History
         if(i!=1){
-          return(length(which(sxw[1:(i-1),"selected_segment"]==xj)))}else{
-            return(0)
-          }
-      }),envir = storaget)
-      #Value calculated by bayes rule
-      assign("v_bayesarray",sapply(1:numseg, function(y) {
+          samphx<-length(which(sxw[1:(i-1),"selected_segment"]==xj))
+        }else{
+          samphx<-0
+        }
+        #Value perfect bayes 
         nreward<-sum(sxw[1:i-1,"win"])
         nchoice<-length(which(sxw[1:i-1,"selected_segment"]==y))
         nchoicegivenrewar<-length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==1))
@@ -167,33 +162,25 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
         if(pchoice!=0){
           v_bayes <- (pcgivenreward * preward) / pchoice
         }else{v_bayes <- 0}
-        return(v_bayes)}),envir = storaget)
-      storaget$vbayarray[storaget$samplehxarray==0]<-NA
-      
-      #Use Beta distrubution to calculate value (mean) & uncertrainty (variance)
-      #alpha
-      assign("alphaarray",sapply(1:numseg, function(y) {
-        length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==1))
-      }),envir = storaget)
-      #Beta
-      assign("betaarray",sapply(1:numseg, function(y) {
-        length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==0))
-      }),envir = storaget)
-      
-      #distBetaMean
-      assign("dBetaMuarray",sapply(1:numseg, function(y) {
-        alphax<-length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==1))
-        betax<-length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==0))
+        if(samphx==0){v_bayes<-NA}
+        #Alpha
+        alphax<-1+length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==1))
+        #Beta
+        betax<-1+length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==0))
+        #Dist Beta Mu 
         mu<- ((alphax) / (alphax+betax))
-        return(mu)
-      }),envir = storaget)
-      #distBetaSigmaSquare
-      assign("dBetaSigmaSquarearray",sapply(1:numseg, function(y) {
-        alphax<-length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==1))
-        betax<-length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==0))
-        sigmasquare<-( (alphax * betax) / ((alphax+betax)^2 * (alphax+betax+1)) )
-        return(sigmasquare)
-      }),envir = storaget)
+        #Dist Beta Sigma Square
+        sigmasquare<-( (alphax * betax) / ((alphax+betax)^2 * (alphax+betax+1)))
+        #Export
+        dxj<-data.frame(seg=y,samplehxarray=samphx,v_bayesarray=v_bayes,alphaarray=alphax,
+                   betaarray=betax,dBetaMuarray=mu,dBetaSigmaSquarearray=sigmasquare)
+        return(dxj)
+        }))
+      storaget<-as.environment(tej)
+      
+      choicearray<-rep(0,numseg)
+      choicearray[segchoice]<-1
+      assign("choicearray",choicearray,envir = storaget)
       
       ext_df<-do.call(cbind,lapply(todolist,function(jx) {
         arrayx<-as.data.frame(as.list(get(paste0(jx,"array"),envir = storaget)),col.names = get(paste0(jx,"vars"),envir = commenvir))
