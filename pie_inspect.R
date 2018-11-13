@@ -12,30 +12,21 @@ library(stargazer)
 #
 load("pie_data.rdata")
 
+# more processing (can be offloaded to upstream scripts)
 df <- as.tibble(pie_data_proc$df)
-
 df = df %>% as_tibble %>% arrange(ID, block_num, trial)
-
-# value sampled on the first free choice as a function of even/uneven sampling -- should be lower in uneven
-
-# inspect relative value and uncertainty signals
 df$num_segments <- as.factor(df$num_segments)
 df$show_points <- as.factor(df$show_points)
 df$even_uneven <- as.factor(df$even_uneven)
 df$forced_sampling <- NA
 df$forced_sampling[df$even_uneven==0] <- 'uneven'
 df$forced_sampling[df$even_uneven==1] <- 'even'
-
-# inx<-df[names(df)[grep("samplehx[0-9]",names(df))]]==0
-# df[names(df)[grep("v_bayes[0-9]",names(df))]][inx]<-NA
-
-# calculate different value flavors
-
 df$v_mean <- rowMeans(df[c('v_bayes1','v_bayes2','v_bayes3', 'v_bayes4',
                            'v_bayes5','v_bayes6','v_bayes7','v_bayes8')], na.rm =  T)
-df$v_diff <- df$vbay_selected - df$v_mean
-df$v_max <- apply(df[,c('v_bayes1','v_bayes2','v_bayes3', 'v_bayes4',
-                       'v_bayes5','v_bayes6','v_bayes7','v_bayes8')], 1, max, na.rm = T)
+df$v_diff <- df$v_bayes_selected - df$v_mean
+df$mu_max <- apply(df[,c('dBetaMu1','dBetaMu2','dBetaMu3','dBetaMu4',
+                         'dBetaMu5','dBetaMu6','dBetaMu7', 'dBetaMu8')], 1, function(x)
+                  {max(na.omit(x))})
 
 df$n_unsampled <- apply(df[,c('samplehx1','samplehx2','samplehx3', 'samplehx4',
                               'samplehx5','samplehx6','samplehx7','samplehx8')], 1, function(x) 
@@ -45,7 +36,7 @@ df$H <- apply(df[,c('dBetaMu1','dBetaMu2','dBetaMu3','dBetaMu4',
                     'dBetaMu5','dBetaMu6','dBetaMu7', 'dBetaMu8')], 1, function(x)
                       {-sum(na.omit(x)*log(na.omit(x)))})
 
-
+# only the free choices
 fdf<-df[!as.logical(df$forced_choice),]
 
 ff <- as.tibble(df[(df$trial==5 & df$num_segments==4) | (df$trial==9 & df$num_segments==8),])
@@ -54,16 +45,13 @@ uff <- ff[ff$forced_sampling=='uneven',]
 # sanity check H timecourse plot -- large scaling difference between 4 and 8
 ggplot(fdf, aes(trial,H, color = num_segments, lty = show_points)) + geom_smooth(method = "loess")
 
-
 varyingvars<-names(df)[grep("[1-9]",names(df))]
 ldf<-reshape2::melt(fdf, measure.vars = varyingvars)
 ldf$type<-gsub("[0-9]*","",ldf$variable)
 ldf <- ldf[ldf$type=='v_bayes',]
-
-<<<<<<< HEAD
 # how many remain unsampled
-ggplot(fdf,aes(trial,n_unsampled, color = num_segments, lty = show_points)) + geom_smooth()
-=======
+# ggplot(fdf,aes(trial,n_unsampled, color = num_segments, lty = show_points)) + geom_smooth()
+
 # beta mean
 mdf<-reshape2::melt(fdf, measure.vars = varyingvars)
 mdf$type<-gsub("[0-9]*","",mdf$variable)
@@ -74,19 +62,19 @@ sdf$type<-gsub("[0-9]*","",sdf$variable)
 sdf <- sdf[sdf$type=='dBetaSigmaSquare',]
 
 
->>>>>>> 6ab3ee61fc0354e37a902a375ae5efc82fb3c682
 # subjective Bayesian probabilities by segment
 ggplot(ldf,aes(trial,value, color = variable)) + geom_smooth() + facet_wrap(~num_segments)
 ggplot(mdf,aes(trial,value, color = variable)) + geom_smooth() + facet_wrap(~num_segments)
-ggplot(sdf,aes(trial,value, color = variable)) + geom_smooth() + facet_wrap(~num_segments)
+ggplot(sdf,aes(trial,value, color = variable, lty = show_points)) + geom_smooth() + facet_grid(variable~num_segments)
 
-
+#########
+# plots of exploitation
 # their exploitation is helped by show_points in 8
 # selected value
-ggplot(fdf,aes(trial,vbay_selected,color = num_segments, lty = show_points)) + geom_smooth(method = "loess") 
+ggplot(fdf,aes(trial,dBetaMu_selected,color = num_segments, lty = show_points)) + geom_smooth(method = "loess") 
 # initial values are inflated in even samplign by design
-ggplot(fdf,aes(trial, vbay_selected,color = num_segments, lty = forced_sampling)) + 
-  geom_smooth(method = 'loess') #+ facet_wrap(~ID)
+ggplot(fdf,aes(trial, dBetaMu_selected,color = num_segments, lty = show_points)) + 
+  geom_smooth(method = 'loess') + facet_wrap(~forced_sampling)
 # difference from mean value
 ggplot(fdf,aes(trial,v_diff,color = num_segments, lty = show_points)) + geom_smooth(method = "loess") 
 # objective value/probability
@@ -94,44 +82,61 @@ ggplot(fdf,aes(trial, selected_prob,color = num_segments, lty = show_points)) + 
 ggplot(fdf,aes(trial, selected_prob,color = num_segments, lty = show_points)) + 
   geom_smooth(method = 'loess')
 
-
+#########
 # value-uncertainty relationship
-ggplot(fdf,aes(vbay_selected,u,color = num_segments, lty = show_points)) + geom_smooth(method = "loess") + facet_wrap(~ID)
-ggplot(fdf,aes(vbay_selected,u,color = num_segments, lty = show_points)) + geom_smooth(method = "loess")
+
+# beta variance is by definition not epistemic uncertainty but risk
+ggplot(fdf,aes(dBetaMu_selected,dBetaSigmaSquare_selected,color = num_segments, lty = show_points)) + 
+  geom_point() + facet_wrap(~ID)
+
+# u is truly uncorrelated with value and closer to epistemic uncertainty
+ggplot(fdf,aes(dBetaMu_selected,u,color = num_segments, lty = show_points)) + 
+  geom_point() + facet_wrap(~ID)
+
+ggplot(fdf,aes(v_bayes_selected,u,color = num_segments, lty = show_points)) + 
+  geom_smooth(method = "loess")
 # full data 
-ggplot(fdf[fdf$trial>10,],aes(vbay_selected,u, color = trial, shape = show_points)) + geom_point() + facet_grid(block_num~ID)
+ggplot(fdf[fdf$trial>10,],aes(v_bayes_selected,u, color = trial, shape = show_points)) + geom_point() + facet_grid(block_num~ID)
 ggsave("uv_share.pdf", height = 20, width = 20)
 # # right after forced sampling
-# ggplot(ff,aes(vbay_selected,u,color = num_segments, lty = show_points)) + geom_smooth(method = "gam")
+# ggplot(ff,aes(v_bayes_selected,u,color = num_segments, lty = show_points)) + geom_smooth(method = "gam")
 # ggplot(ff,aes(selected_prob,u,color = num_segments, lty = show_points)) + geom_smooth(method = "gam")
 
 # do they switch from exploration to exploitation
 
 ########## 
-# formal look at exploitation
+# models of exploitation
 
 # do they get design probabilities?
-m1 <- lmer(selected_prob ~ num_segments * show_points + trial + (1|ID), fdf)
+m1 <- lmer(selected_prob ~ num_segments * show_points * scale(trial) + 
+             forced_sampling  +
+             (1|ID), fdf)
 summary(m1)
 car::Anova(m1,'3')
 
 # ideal Bayesian observer value
-m2 <- lmer(vbay_selected ~ num_segments * show_points + trial + (1|ID), fdf)
+m2 <- lmer(dBetaMu_selected ~ num_segments * show_points + trial + (1|ID), fdf)
 summary(m2)
 car::Anova(m2,'3')
+
+# does the forced sampling symmetry matter?
+m2f <- lmer(dBetaMu_selected ~ num_segments * show_points * scale(trial) + 
+              forced_sampling * num_segments   +
+              (1|ID), fdf)
+summary(m2f)
+car::Anova(m2f,'3')
+anova(m2,m2f)
+
 
 # value difference between chosen and best available
 m3diff <- lmer(v_diff ~ num_segments * show_points + trial + (1|ID), fdf)
 summary(m3diff)
 car::Anova(m3diff,'3')
 
-<<<<<<< HEAD
 ###########
 # exploration
 # crude measure of uncertainty: u = #samples_of_selected_segment/#trials(i.e. total # samples for normalization)
-=======
 # factors controlling choice uncertainty
->>>>>>> 6ab3ee61fc0354e37a902a375ae5efc82fb3c682
 m4 <- lmer(u ~ num_segments * show_points * trial + (1|ID), fdf)
 summary(m4)
 car::Anova(m4,'3')
@@ -156,6 +161,27 @@ sm3 <- lmer(dBetaSigmaSquare_selected ~ H + num_segments * show_points * trial +
 summary(sm3)
 car::Anova(sm3,'3')
 
+# when do they sample the most uncertain option? 'd' stands for directed
+dm1 <- glmer(dBetaSigmaSquare_isSelectedMax ~ num_segments * show_points * scale(trial) + (1|ID), family = 'binomial', fdf)
+summary(dm1)
+car::Anova(dm1,'3')
+# adjust for entropy
+dm2 <- glmer(dBetaSigmaSquare_isSelectedMax ~ scale(H) * num_segments * scale(trial) + num_segments * show_points + (1|ID), family = 'binomial', 
+             glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 1e5)),data = fdf)
+summary(dm2)
+car::Anova(dm2,'3')
+
+# and for max available value (temptation to exploit)
+dm3 <- glmer(dBetaSigmaSquare_isSelectedMax ~ scale(H) * num_segments * scale(trial) + 
+               scale(mu_max) * num_segments * scale(trial) + num_segments * show_points + (1|ID), family = 'binomial', 
+             glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 1e5)),data = fdf)
+summary(dm3)
+car::Anova(dm3,'3')
+
+
+ggplot(fdf, aes(trial,as.integer(dBetaSigmaSquare_isSelectedMax), color = num_segments, lty = show_points)) +
+       geom_smooth(method = "glm", method.args = list(family = "binomial"))
+
 # entropy dynamics: entropy stays high in 8-show vs. 8-no-show (?selective maintenance)
 hm1 <- lmer(H ~ num_segments * show_points * trial + (1|ID), fdf)
 summary(hm1)
@@ -168,25 +194,9 @@ ggplot(fdf,aes(trial, dBetaSigmaSquare_selected,color = num_segments, lty = show
 
 ######
 # Find the Bob Wilson uncertainty-driven exploration effect
-ggplot(ff[ff$vbay_selected==0,],aes(forced_sampling,samplehx_selected,color = vbay_selected)) + geom_jitter() + facet_wrap(show_points~num_segments)
-ggplot(ff,aes(forced_sampling,u==1,color = vbay_selected)) + geom_jitter(width = .4, height = .03 ) + 
+ggplot(ff[ff$v_bayes_selected==0,],aes(forced_sampling,samplehx_selected,color = v_bayes_selected)) + geom_jitter() + facet_wrap(show_points~num_segments)
+ggplot(ff,aes(forced_sampling,u==1,color = v_bayes_selected)) + geom_jitter(width = .4, height = .03 ) + 
    facet_wrap(show_points~num_segments)
-
-# run a logistic model
-um1 <- glmer(samplehx_selected==0 ~ num_segments*show_points + (1|ID),uff[,],
-             family = binomial(link = "logit"))
-summary(um1)
-
-# I don't think this is a valid model, just reminding myself that I did this
-um2 <- lmer(u ~ forced_sampling * num_segments + forced_sampling * vbay_selected  
-            + forced_sampling * show_points  + vbay_selected *  show_points + num_segments * show_points +  (1|ID),ff[,])
-summary(um2)
-car::Anova(um2,'3')
-
-# the one I trust, not so much um2
-um3 <- lmer(u ~ vbay_selected * num_segments + show_points * num_segments + (1|ID),uff)
-summary(um3)
-car::Anova(um3,'3')
 
 # look at beta distribution uncertainty and value statistics
 ggplot(fdf,aes(trial, dBetaMu_selected, color = num_segments, lty = show_points)) + geom_smooth(method = "loess")
