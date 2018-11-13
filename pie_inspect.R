@@ -6,7 +6,6 @@ library(lme4)
 # library(lmerTest)
 library(ggplot2)
 library(tidyverse)
-library(readr)
 library(multcompView)
 library(stargazer)
 
@@ -61,10 +60,26 @@ ldf<-reshape2::melt(fdf, measure.vars = varyingvars)
 ldf$type<-gsub("[0-9]*","",ldf$variable)
 ldf <- ldf[ldf$type=='v_bayes',]
 
+<<<<<<< HEAD
 # how many remain unsampled
 ggplot(fdf,aes(trial,n_unsampled, color = num_segments, lty = show_points)) + geom_smooth()
+=======
+# beta mean
+mdf<-reshape2::melt(fdf, measure.vars = varyingvars)
+mdf$type<-gsub("[0-9]*","",mdf$variable)
+mdf <- mdf[mdf$type=='dBetaMu',]
+# beta variance
+sdf<-reshape2::melt(fdf, measure.vars = varyingvars)
+sdf$type<-gsub("[0-9]*","",sdf$variable)
+sdf <- sdf[sdf$type=='dBetaSigmaSquare',]
+
+
+>>>>>>> 6ab3ee61fc0354e37a902a375ae5efc82fb3c682
 # subjective Bayesian probabilities by segment
 ggplot(ldf,aes(trial,value, color = variable)) + geom_smooth() + facet_wrap(~num_segments)
+ggplot(mdf,aes(trial,value, color = variable)) + geom_smooth() + facet_wrap(~num_segments)
+ggplot(sdf,aes(trial,value, color = variable)) + geom_smooth() + facet_wrap(~num_segments)
+
 
 # their exploitation is helped by show_points in 8
 # selected value
@@ -110,13 +125,17 @@ m3diff <- lmer(v_diff ~ num_segments * show_points + trial + (1|ID), fdf)
 summary(m3diff)
 car::Anova(m3diff,'3')
 
+<<<<<<< HEAD
 ###########
 # exploration
 # crude measure of uncertainty: u = #samples_of_selected_segment/#trials(i.e. total # samples for normalization)
+=======
+# factors controlling choice uncertainty
+>>>>>>> 6ab3ee61fc0354e37a902a375ae5efc82fb3c682
 m4 <- lmer(u ~ num_segments * show_points * trial + (1|ID), fdf)
 summary(m4)
 car::Anova(m4,'3')
-m4v <- lmer(u ~ v_max + num_segments * show_points * trial + (1|ID), fdf)
+m4v <- lmer(u ~ v_max * num_segments * show_points * trial +  (1|ID), fdf)
 summary(m4v)
 car::Anova(m4v,'3')
 anova(m4,m4v)
@@ -168,6 +187,22 @@ car::Anova(um2,'3')
 um3 <- lmer(u ~ vbay_selected * num_segments + show_points * num_segments + (1|ID),uff)
 summary(um3)
 car::Anova(um3,'3')
+
+# look at beta distribution uncertainty and value statistics
+ggplot(fdf,aes(trial, dBetaMu_selected, color = num_segments, lty = show_points)) + geom_smooth(method = "loess")
+# NB: variance of the beta is not the same as epistemic uncertainty; it is closer to risk
+ggplot(fdf,aes(dBetaMu_selected,u, color = num_segments, shape = show_points)) + geom_point()
+
+ggplot(fdf,aes(trial, dBetaSigmaSquare_selected, color = num_segments, lty = show_points)) + geom_smooth(method = "loess")
+
+sm1 <- lmer(dBetaSigmaSquare_selected ~ num_segments * show_points * trial + (1|ID), fdf)
+summary(sm1)
+car::Anova(sm1,'3')
+m4v <- lmer(u ~ v_max * num_segments * show_points * trial +  (1|ID), fdf)
+summary(m4v)
+car::Anova(m4v,'3')
+anova(m4,m4v)
+
 
 # compare observed to expected exploration -- no clear prediction for expected because of value confound
 u4plus <- sum(uff$u[uff$num_segments==4]==1)
