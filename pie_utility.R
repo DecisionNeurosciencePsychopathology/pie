@@ -158,7 +158,7 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
       tej<-do.call(rbind,lapply(1:numseg, function(y) { 
         #Sample History
         if(i!=1){
-          samphx<-length(which(sxw[1:(i-1),"selected_segment"]==xj))
+          samphx<-length(which(sxw[1:(i-1),"selected_segment"]==y))
         }else{
           samphx<-0
         }
