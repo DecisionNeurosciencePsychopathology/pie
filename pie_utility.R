@@ -100,15 +100,25 @@ ProcApply<-function(listx=NULL,FUNC=NULL,...) {
 #Pie Specific;
 pie_getdata<-function(boxsyncpath=NULL){
   pieroot<-file.path(boxsyncpath,"skinner","data","matlab task data","pie_task")
-  piedata_raw<-lapply(list.files(path = pieroot,pattern = ".*_outstruct.csv",full.names = T),read.csv)
-  names(piedata_raw)<-gsub("([0-9]+).*$", "\\1",list.files(path = pieroot,pattern = ".*_outstruct.csv"))
+  #piedata_raw<-lapply(list.files(path = pieroot,pattern = ".*_outstruct.csv",full.names = T),read.csv)
+  #names(piedata_raw)<-gsub("([0-9]+).*$", "\\1",list.files(path = pieroot,pattern = ".*_outstruct.csv"))
   
-  piedata_raw<-lapply(gsub("([0-9]+).*$", "\\1",list.files(path = pieroot,pattern = ".*_outstruct.csv")),function(ID){
+  pit_subset<-lapply(gsub("([0-9]+).*$", "\\1",list.files(path = pieroot,pattern = ".*_outstruct.csv")),function(ID){
     rawdata<-read.csv(file.path(pieroot,paste0(ID,"_outstruct.csv")))
     rawdata$ID<-ID
+    rawdata$Source<-"PIT"
+    return(rawdata)
+  })
+  psu_subset<-lapply(gsub("([0-9]+).*$", "\\1",list.files(path = file.path(pieroot,"PSU"),pattern = ".*_outstruct.csv")),function(ID){
+    #message(ID)
+    rawdata<-read.csv(file.path(pieroot,"PSU",paste0(ID,"_outstruct.csv")))
+    rawdata$ID<-ID
+    rawdata$Source<-"PSU"
+    if(is.null(rawdata$RT)) {rawdata$RT<-NA}
     return(rawdata)
   })
   
+  piedata_raw<-c(pit_subset,psu_subset)
   piedata_raw_all<-do.call(rbind,piedata_raw)
   
   return(list(list=piedata_raw,df=piedata_raw_all))
@@ -133,29 +143,26 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
   ss_proc<-do.call(rbind,lapply(ss_pie_scon,function(sx){
     # ss_pie_scon[[1]]->sx
     #Okay REDESIGN!!!!
+    message("block:",unique(sx$block_num))
+    if(any(!is.na(sx$RT))){
     sxw<-sx[which(sx$RT!=0),]
-    
+    } else {sxw<-sx}
     ext<-lapply(sxw$trial,function(i){
-      #print(i)
+      #message(i)
       storaget<-as.environment(list())
 
       segchoice<-sxw[i,"selected_segment"]
       segrwad<-sxw[i,"win"]
       
       #Current Choice;
-      choicearray<-rep(0,numseg)
-      choicearray[segchoice]<-1
-      assign("choicearray",choicearray,envir = storaget)
-      
-      #Past Sample History;
-      assign("samplehxarray",sapply(1:numseg,function(xj){
+      tej<-do.call(rbind,lapply(1:numseg, function(y) { 
+        #Sample History
         if(i!=1){
-          return(length(which(sxw[1:(i-1),"selected_segment"]==xj)))}else{
-            return(0)
-          }
-      }),envir = storaget)
-      #Value calculated by bayes rule
-      assign("v_bayesarray",sapply(1:numseg, function(y) {
+          samphx<-length(which(sxw[1:(i-1),"selected_segment"]==xj))
+        }else{
+          samphx<-0
+        }
+        #Value perfect bayes 
         nreward<-sum(sxw[1:i-1,"win"])
         nchoice<-length(which(sxw[1:i-1,"selected_segment"]==y))
         nchoicegivenrewar<-length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==1))
@@ -167,38 +174,37 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
         if(pchoice!=0){
           v_bayes <- (pcgivenreward * preward) / pchoice
         }else{v_bayes <- 0}
-        return(v_bayes)}),envir = storaget)
-      storaget$vbayarray[storaget$samplehxarray==0]<-NA
-      
-      #Use Beta distrubution to calculate value (mean) & uncertrainty (variance)
-      #alpha
-      assign("alphaarray",sapply(1:numseg, function(y) {
-        length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==1))
-      }),envir = storaget)
-      #Beta
-      assign("betaarray",sapply(1:numseg, function(y) {
-        length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==0))
-      }),envir = storaget)
-      
-      #distBetaMean
-      assign("dBetaMuarray",sapply(1:numseg, function(y) {
-        alphax<-length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==1))
-        betax<-length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==0))
+        if(samphx==0){v_bayes<-NA}
+        #Alpha
+        alphax<-1+length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==1))
+        #Beta
+        betax<-1+length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==0))
+        #Dist Beta Mu 
         mu<- ((alphax) / (alphax+betax))
-        return(mu)
-      }),envir = storaget)
-      #distBetaSigmaSquare
-      assign("dBetaSigmaSquarearray",sapply(1:numseg, function(y) {
-        alphax<-length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==1))
-        betax<-length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==0))
-        sigmasquare<-( (alphax * betax) / ((alphax+betax)^2 * (alphax+betax+1)) )
-        return(sigmasquare)
-      }),envir = storaget)
+        #Dist Beta Sigma Square
+        sigmasquare<-( (alphax * betax) / ((alphax+betax)^2 * (alphax+betax+1)))
+        #Export
+        dxj<-data.frame(seg=y,samplehxarray=samphx,v_bayesarray=v_bayes,alphaarray=alphax,
+                   betaarray=betax,dBetaMuarray=mu,dBetaSigmaSquarearray=sigmasquare)
+        return(dxj)
+        }))
+      storaget<-as.environment(tej)
+      
+      choicearray<-rep(0,numseg)
+      choicearray[segchoice]<-1
+      assign("choicearray",choicearray,envir = storaget)
       
       ext_df<-do.call(cbind,lapply(todolist,function(jx) {
         arrayx<-as.data.frame(as.list(get(paste0(jx,"array"),envir = storaget)),col.names = get(paste0(jx,"vars"),envir = commenvir))
         selectedx<-as.data.frame(as.list(get(paste0(jx,"array"),envir = storaget)[segchoice]),col.names = paste0(jx,"_selected"))
-        return(cbind(arrayx,selectedx))
+        if(any(!is.na(arrayx))){
+        ismax<-as.data.frame(as.list(arrayx==max(arrayx)),col.names = paste0("ismax_",get(paste0(jx,"vars"),envir = commenvir)))
+        isSelectedMax<-as.data.frame(as.list(ismax[segchoice]),col.names = paste0(jx,"_isSelectedMax"))
+        } else {
+        ismax<-as.data.frame(as.list(arrayx),col.names = paste0("ismax_",get(paste0(jx,"vars"),envir = commenvir)))
+        isSelectedMax<-as.data.frame(as.list(NA),col.names = paste0(jx,"_isSelectedMax"))
+        }
+        return(cbind(arrayx,selectedx,ismax,isSelectedMax))
       }))
       return(ext_df)
     }) 
