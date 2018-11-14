@@ -8,7 +8,7 @@ library(ggplot2)
 library(tidyverse)
 library(multcompView)
 library(stargazer)
-
+source('~/code/R/vif.lme.R')
 #
 load("pie_data.rdata")
 
@@ -36,6 +36,20 @@ df$H <- apply(df[,c('dBetaMu1','dBetaMu2','dBetaMu3','dBetaMu4',
                     'dBetaMu5','dBetaMu6','dBetaMu7', 'dBetaMu8')], 1, function(x)
                       {-sum(na.omit(x)*log(na.omit(x)))})
 
+
+# need to mean-center entropy by # segments
+df$Hscaled[df$num_segments=='8'] <- scale(df$H[df$num_segments=='8'])
+df$Hscaled[df$num_segments=='4'] <- scale(df$H[df$num_segments=='4'])
+
+# and by maintenance demand
+df$Hscaled_show[df$show_points==1] <- scale(df$Hscaled[df$show_points==1])
+df$Hscaled_show[df$show_points==0] <- scale(df$Hscaled[df$show_points==0])
+
+
+
+# to eliminate (at least nominally) collinearity between trial and number of segments, adjust for condition
+df$trial_adj <- df$trial 
+df$trial_adj[df$num_segments=='8'] <- df$trial[df$num_segments=='8'] - 4
 # only the free choices
 fdf<-df[!as.logical(df$forced_choice),]
 
@@ -45,10 +59,14 @@ uff <- ff[ff$forced_sampling=='uneven',]
 # sanity check H timecourse plot -- large scaling difference between 4 and 8
 ggplot(fdf, aes(trial,H, color = num_segments, lty = show_points)) + geom_smooth(method = "loess")
 
+ggplot(fdf, aes(trial_adj,Hscaled, color = num_segments, lty = show_points)) + geom_smooth(method = "loess")
+
+
 varyingvars<-names(df)[grep("[1-9]",names(df))]
 ldf<-reshape2::melt(fdf, measure.vars = varyingvars)
 ldf$type<-gsub("[0-9]*","",ldf$variable)
 ldf <- ldf[ldf$type=='v_bayes',]
+ldf <- ldf %>% arrange(ID,block_num,trial, type)
 # how many remain unsampled
 # ggplot(fdf,aes(trial,n_unsampled, color = num_segments, lty = show_points)) + geom_smooth()
 
@@ -63,9 +81,9 @@ sdf <- sdf[sdf$type=='dBetaSigmaSquare',]
 
 
 # subjective Bayesian probabilities by segment
-ggplot(ldf,aes(trial,value, color = variable)) + geom_smooth() + facet_wrap(~num_segments)
-ggplot(mdf,aes(trial,value, color = variable)) + geom_smooth() + facet_wrap(~num_segments)
-ggplot(sdf,aes(trial,value, color = variable, lty = show_points)) + geom_smooth() + facet_grid(variable~num_segments)
+ggplot(ldf,aes(trial,value, color = variable)) + geom_smooth(method = "loess") + facet_wrap(~num_segments)
+ggplot(mdf,aes(trial,value, color = variable)) + geom_smooth(method = "loess") + facet_wrap(~num_segments)
+# ggplot(sdf,aes(trial,value, color = variable,size = num_segments, lty = show_points)) + geom_smooth() 
 
 #########
 # plots of exploitation
@@ -119,6 +137,13 @@ m2 <- lmer(dBetaMu_selected ~ num_segments * show_points + trial + (1|ID), fdf)
 summary(m2)
 car::Anova(m2,'3')
 
+m2 <- lmer(dBetaMu_selected ~ num_segments * show_points + scale(trial_adj) + scale(mu_max) +
+           Hscaled_show + (1|ID), fdf)
+vif.lme(m2)
+summary(m2)
+car::Anova(m2,'3')
+
+
 # does the forced sampling symmetry matter?
 m2f <- lmer(dBetaMu_selected ~ num_segments * show_points * scale(trial) + 
               forced_sampling * num_segments   +
@@ -137,13 +162,40 @@ car::Anova(m3diff,'3')
 # exploration
 # crude measure of uncertainty: u = #samples_of_selected_segment/#trials(i.e. total # samples for normalization)
 # factors controlling choice uncertainty
-m4 <- lmer(u ~ num_segments * show_points * trial + (1|ID), fdf)
+m4 <- lmer(u ~ num_segments * show_points + show_points * scale(trial_adj) +  (1|ID), fdf)
+vif.lme(m4)
 summary(m4)
 car::Anova(m4,'3')
-m4v <- lmer(u ~ v_max * num_segments * show_points * trial +  (1|ID), fdf)
+m4v <- lmer(u ~ (num_segments + show_points + scale(mu_max) + scale(trial_adj) ) ^2 + (1|ID), fdf)
+vif.lme(m4v)
 summary(m4v)
 car::Anova(m4v,'3')
-anova(m4,m4v)
+
+m4h <- lmer(u ~ (num_segments + show_points +  scale(Hscaled_show) + scale(trial_adj)) ^2  + (1|ID), fdf)
+vif.lme(m4h)
+summary(m4h)
+
+# stopped here, this model is interesting but runs into substantial collinearity problems (vif~5)
+m4vh <- lmer(u ~ (num_segments + show_points + scale(mu_max) + scale(trial_adj) ) ^2 +
+               (num_segments + show_points + scale(Hscaled) + scale(trial_adj) ) ^2 + (1|ID), fdf)
+vif.lme(m4vh)
+summary(m4vh)
+car::Anova(m4vh,'3')
+
+m4vhs <- lmer(u ~ (scale(mu_max) + scale(Hscaled_show) + scale(trial_adj)) ^2 + num_segments * show_points + (1|ID), fdf)
+vif.lme(m4vhs)
+summary(m4vhs)
+car::Anova(m4vhs,'3')
+
+
+
+anova(m4,m4v,m4h)
+
+#? interaction with condition and trial
+m5vh <- lmer(u ~ num_segments * show_points + show_points * trial * mu_max + num_segments * H + show_points * H + (1|ID), fdf)
+summary(m5vh)
+car::Anova(m5vh,'3')
+plot(emmeans(m5vh, c("mu_max", "H"), by = c("num_segments", "show_points"), at = list(H = c())))
 
 # beta distribution uncertainty (mu reduces to the mean % reinforced, same as v_bayes)
 # "s" stands for sigma^2
