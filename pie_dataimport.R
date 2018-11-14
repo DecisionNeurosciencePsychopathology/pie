@@ -15,4 +15,11 @@ pie_data_proc<-ProcApply(multicorenum = 8,piedata_raw$list,pie_preproc,filter_fr
 
 pie_firstfree<-ProcApply(piedata_raw$list,pie_preproc,filter_freechoice=T,only_firstfree=T)$df
 
-save(piedata_raw,pie_data_proc,pie_firstfree,file = "pie_data.rdata")
+varyingvars<-names(pie_data_proc$df)[grepl("[1-8]",names(pie_data_proc$df)) & !names(pie_data_proc$df) %in% names(piedata_raw$df)]
+pie_data_proc_long<-reshape(data = pie_data_proc$df,v.names = unique(gsub("[0-9.]", "", varyingvars)),
+        varying = varyingvars, idvar = c("ID","trial","block_num"),times = 1:8,timevar = "segment",
+        direction = "long")
+pie_data_proc_long<-pie_data_proc_long[order(pie_data_proc_long$ID,pie_data_proc_long$block_num,pie_data_proc_long$trial),]
+pie_data_proc_long<-pie_data_proc_long[as.logical(apply(pie_data_proc_long[unique(gsub("[0-9.]", "", varyingvars))],1,function(x) { any(!is.na(x)) })),]
+
+save(piedata_raw,pie_data_proc,pie_firstfree,pie_data_proc_long,file = "pie_data.rdata")
