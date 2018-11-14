@@ -32,9 +32,10 @@ df$n_unsampled <- apply(df[,c('samplehx1','samplehx2','samplehx3', 'samplehx4',
                               'samplehx5','samplehx6','samplehx7','samplehx8')], 1, function(x) 
                         {sum(na.omit(x)==0)})
 # value entropy
+# need to NORMALIZE THE VALUE VECTOR, idiot!
 df$H <- apply(df[,c('dBetaMu1','dBetaMu2','dBetaMu3','dBetaMu4',
                     'dBetaMu5','dBetaMu6','dBetaMu7', 'dBetaMu8')], 1, function(x)
-                      {-sum(na.omit(x)*log(na.omit(x)))})
+                      {-sum(na.omit(x/norm(na.omit(as.matrix(x))))*log(na.omit(x/norm(na.omit(as.matrix(x))))))})
 
 
 # need to mean-center entropy by # segments
