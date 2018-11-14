@@ -90,8 +90,15 @@ findbox<-function() {
   return(boxdir)
 }
 
-ProcApply<-function(listx=NULL,FUNC=NULL,...) {
-  proc_af<-lapply(X = listx,FUN = FUNC,... = ...)
+ProcApply<-function(multicorenum=1,listx=NULL,FUNC=NULL,...) {
+  if(multicorenum<2){
+    proc_af<-lapply(X = listx,FUN = FUNC,... = ...)
+  } else {
+    clusterjob<-parallel::makeCluster(multicorenum,outfile="",type = "FORK")
+    proc_af<-parallel::parLapply(cl = clusterjob,X = listx,fun = FUNC,... = ...)
+    parallel::stopCluster(clusterjob)
+  }
+
   return(list(list=proc_af,
          df=do.call(rbind,proc_af)))
 }
@@ -132,7 +139,7 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
   commenvir<-as.environment(list())
   
   #Set up what to get:
-  todolist<-c("samplehx","v_bayes","choice","alpha","beta","dBetaMu","dBetaSigmaSquare")
+  todolist<-c("samplehx","v_bayes","choice","uncertainty","alpha","beta","dBetaMu","dBetaSigmaSquare")
   indexsx<-do.call(rbind,lapply(todolist,function(xj) {
     inkd<-data.frame(segnum=1:numseg,type=xj)
     inkd$variname<-paste0(inkd$type,inkd$segnum)
@@ -166,15 +173,18 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
         nreward<-sum(sxw[1:i-1,"win"])
         nchoice<-length(which(sxw[1:i-1,"selected_segment"]==y))
         nchoicegivenrewar<-length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==1))
-        ntotal<-i
+        ntotal<- (i-1)
         pcgivenreward<-ifelse(nreward==0,0,(nchoicegivenrewar / nreward))
         if(usemeanprior){
           preward<-mean(sxw$selected_prob)} else {preward<-nreward/ntotal}
         pchoice<-(nchoice/ntotal)
+        if(is.na(pchoice)){pchoice<-0}
         if(pchoice!=0){
           v_bayes <- (pcgivenreward * preward) / pchoice
         }else{v_bayes <- 0}
         if(samphx==0){v_bayes<-NA}
+        #uncertainty
+        uncertainty<- 1-(samphx / ntotal)
         #Alpha
         alphax<-1+length(which(sxw[1:i-1,"selected_segment"]==y & sxw[1:i-1,"win"]==1))
         #Beta
@@ -184,7 +194,7 @@ pie_preproc<-function(ss_pie_raw=NULL,filter_freechoice=T,only_firstfree=F,useme
         #Dist Beta Sigma Square
         sigmasquare<-( (alphax * betax) / ((alphax+betax)^2 * (alphax+betax+1)))
         #Export
-        dxj<-data.frame(seg=y,samplehxarray=samphx,v_bayesarray=v_bayes,alphaarray=alphax,
+        dxj<-data.frame(seg=y,samplehxarray=samphx,v_bayesarray=v_bayes,alphaarray=alphax,uncertaintyarray=uncertainty,
                    betaarray=betax,dBetaMuarray=mu,dBetaSigmaSquarearray=sigmasquare)
         return(dxj)
         }))
