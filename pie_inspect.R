@@ -192,11 +192,8 @@ car::Anova(m4vhs,'3')
 
 anova(m4,m4v,m4h)
 
-#? interaction with condition and trial
-m5vh <- lmer(u ~ num_segments * show_points + show_points * trial * mu_max + num_segments * H + show_points * H + (1|ID), fdf)
-summary(m5vh)
-car::Anova(m5vh,'3')
-plot(emmeans(m5vh, c("mu_max", "H"), by = c("num_segments", "show_points"), at = list(H = c())))
+plot(emmeans(m4vhs, c("Hscaled_show"), by = c("trial_adj"), 
+             at = list(Hscaled_show = c(-2,2), trial_adj = c(5,50))))
 
 # beta distribution uncertainty (mu reduces to the mean % reinforced, same as v_bayes)
 # "s" stands for sigma^2
