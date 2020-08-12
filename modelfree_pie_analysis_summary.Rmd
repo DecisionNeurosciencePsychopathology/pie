@@ -1,0 +1,800 @@
+---
+title: "Summary of modelfree pie analyses"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+This summmarizes non-model-based analyses on pie task data using the Penn State dataset. Data pre-processing is in pie_utility.R and pie_preprocessing.R.
+
+Overall goal of analyses: determine how choices are affected by uncertainty and cognitive load
+
+- how do different manipulations of cognitive load (number of items and need to maintain representation in working memory) affect uncertainty seeking/aversion and noise in decisions?
+
+- how do choices change over time with respect to uncertainty?
+
+Sections: 
+
+- Load data & packages, check inclusion/exclusion numbers
+
+- Learning effects (exploitation)
+
+- Initial exploration
+
+- Changes in uncertainty in later trials
+
+- Uncertainty-dependent choices in later trials
+
+- Narrowing of options over over time by cognitive load
+
+- RT effects: slowing as a function of uncertainty and cognitive load
+
+- Effects of entropy & information content on switching
+
+- Spatial generalization of value
+
+
+#### Load data & packages, check inclusion/exclusion numbers
+
+Note: pie_analysis_summary.R includes all following output: load to avoid re-running everything. 
+
+Data are cleaned according to the following criteria: trial-wise exclusion if RTs are less than 200 ms or greater than 2000 ms; subject-wise exclusion of people who both 1) switch significantly more after wins than losses and 2) who choose options with probability of reward < 0.5 in the second half of blocks significantly more than chance. Note that three included subjects do not have RT data and so do not have trial-wise exclusions and are excluded in RT analyses. 
+
+```{r message=FALSE, warning=FALSE}
+load('pie_analysis_summary.Rdata')
+load("pie_data_processed.Rdata")
+load('all_pie_modelfree.RData')
+library(lme4)
+library(ggplot2)
+library(tidyverse)
+library(emmeans)
+source("pie_utility.R")
+
+print(paste('Proportion of trials excluded for bad RTs:',round(sum(is.na(fdf$RT))/dim(fdf)[1],digits=3),sep=' '))
+print(paste('Total number of subjects:',length(unique(fdf$ID)),sep=' '))
+print(paste('Total number of included subjects:',length(unique(fdf$ID))-sum(as.numeric(perf_check[,8])),sep=' '))
+```
+
+#### Learning effects (exploitation)
+
+Are people learning over time? What task features affect performance & learning?
+
+```{r}
+
+# plot ####
+ggplot(fdf,aes(trial, selected_prob,color = num_segments, lty = show_points)) +
+  geom_smooth(method="loess")+facet_wrap(~forced_sampling)
+ggplot(fdf,aes(trial, selected_prob,color = num_segments, lty = show_points)) + 
+  geom_smooth(method="loess",alpha=0.2) + facet_wrap(~ID) + 
+  theme(strip.background = element_blank(),strip.text.x = element_blank())
+
+# statistics ####
+# l1 <- lmer(scale(selected_prob) ~ (num_segments+show_points+scale(trial)+forced_sampling)^3 +
+#              (1|ID/block_num), fdf)
+# summary(l1)
+# l2 <- lmer(scale(selected_prob) ~ (num_segments+show_points+scale(trial)+forced_sampling)^4 +
+#              (1|ID/block_num), fdf)
+summary(l2)
+anova(l1,l2)
+```
+
+Here, learning is measured as choosing options with an increased probability of reward. Participants do learn over time (main effect of trial), and showing points improves performance regardless of trial # (main effect of showing points), but there's no interaction between these variables. With only three-way interactions in the model, nothing else is significant. The plot suggests a four-way interaction, which improves fit (slightly). With a four-way interaction, learning is slower with uneven sampling (trial x forced sampling), but only with four segments or if points are not shown (sement x trial and points x trial interactions with forced sampling) with a further qualification by the four-way interaction reflecting the reduced learning with four segments and no points shown for uneven sampling. This effect is odd, but other than that these results suggest that people do learn overall and that their performance is improved when they are shown information about past outcomes. 
+
+
+#### Initial exploration
+
+For this, we're interested in the blocks where people experience uneven forced sampling & so have some options that are new (uncertain) when they can choose freely. If people choose a new option significantly more than chance (25% of the time for four-segment blocks and 37.5% of the time for eight-segment blocks), then they are making more exploratory choices. How exploratory are people overall and how is this affected by cognitive load, as measured by # of segments and whether points are shown?
+
+```{r}
+
+# plots ####
+num_subj=length(unique(uff$ID))
+ggplot(uff,aes(x=num_segments,fill=(u==1)))+geom_bar(position='fill')+xlab('Number of Segments')+
+  geom_segment(aes(x=0.55,xend=1.45,y=.25,yend=.25),lty=2)+
+  geom_segment(aes(x=1.55,xend=2.45,y=.375,yend=.375),lty=2)+
+  scale_fill_discrete(name='New Option')+ylab('Proportion Chosen')+
+  scale_y_continuous(breaks=c(0,0.25,0.5,0.75,1))+
+  ggtitle('Initial Exploration by Number of Segments')
+
+ggplot(uff,aes(x=num_segments,fill=(u==1)))+geom_bar(position='fill')+xlab('Number of Segments')+
+  geom_segment(aes(x=0.55,xend=1.45,y=.25,yend=.25),lty=2)+
+  geom_segment(aes(x=1.55,xend=2.45,y=.375,yend=.375),lty=2)+
+  scale_fill_discrete(name='New Option')+ylab('Proportion Chosen')+
+  scale_y_continuous(breaks=c(0,0.25,0.5,0.75,1))+
+  facet_wrap(~show_points)+ggtitle('Initial Exploration by Number of Segments & Points Shown')
+
+# statistical analyses ####
+# test effects of showing points, # of segments, & combination
+
+#test effects of showing points
+uff_pts=uff[uff$show_points==1,]
+uff_nopts=uff[uff$show_points==0,]
+chisq.test(uff$u[uff$num_segments==4]==1,uff$show_points[uff$num_segments==4])
+chisq.test(uff$u[uff$num_segments==8]==1,uff$show_points[uff$num_segments==8])
+
+#4 segments, independent of points shown
+u4plus <- sum(uff$u[uff$num_segments==4]==1)
+u4minus <- sum(uff$u[uff$num_segments==4]<1)
+observed_4seg = c(u4plus,u4minus)
+expected_4seg = c(.25,.75)
+chisq.test(x = observed_4seg, p = expected_4seg)
+
+#8 segments
+u8plus <- sum(uff$u[uff$num_segments==8]==1)
+u8minus <- sum(uff$u[uff$num_segments==8]<1)
+observed_8seg = c(u8plus,u8minus)
+expected_8seg = c(.375,1-.375)
+chisq.test(x = observed_8seg, p = expected_8seg)
+
+#4 segments, points shown only
+u4plus_pts <- sum(uff_pts$u[uff_pts$num_segments==4]==1)
+u4minus_pts <- sum(uff_pts$u[uff_pts$num_segments==4]<1)
+observed_4seg_pts = c(u4plus_pts,u4minus_pts)
+chisq.test(x = observed_4seg_pts, p = expected_4seg)
+
+#4 segments, no points only
+u4plus_nopts <- sum(uff_nopts$u[uff_nopts$num_segments==4]==1)
+u4minus_nopts <- sum(uff_nopts$u[uff_nopts$num_segments==4]<1)
+observed_4seg_nopts = c(u4plus_nopts,u4minus_nopts)
+chisq.test(x = observed_4seg_nopts, p = expected_4seg)
+
+#8 segments, points shown
+u8plus_pts <- sum(uff_pts$u[uff_pts$num_segments==8]==1)
+u8minus_pts <- sum(uff_pts$u[uff_pts$num_segments==8]<1)
+observed_8seg_pts = c(u8plus_pts,u8minus_pts)
+chisq.test(x = observed_8seg_pts, p = expected_8seg)
+
+#8 segments, no points shown
+u8plus_nopts <- sum(uff_nopts$u[uff_nopts$num_segments==8]==1)
+u8minus_nopts <- sum(uff_nopts$u[uff_nopts$num_segments==8]<1)
+observed_8seg_nopts = c(u8plus_nopts,u8minus_nopts)
+chisq.test(x = observed_8seg_nopts, p = expected_8seg)
+```
+
+Overall, exploration is moderated by cognitive load. People are exploratory in blocks with four segments and exploitative in blocks with eight; this is further moderated by whether points are shown. People are exploratory specifically with four segments & if points are shown and they are exploitative with eight segments and no points shown. In the other blocks, participants' behavior does not differ from chance, suggesting they are exploration-neutral. Therefore, under high cognitive load (8 segments + no points shown), people are exploitative or uncertainty averse, and under low cognitive load (4 segments + points shown), people are exploratory or uncercertainty seeking. 
+
+
+#### Exploitation versus random choices
+If people choose an old (already chosen) option on the first trial of free sampling, they could be exploiting or just choosing randomly. We can separate this somewhat by looking at, when people choose an already-selected outcome, if that outcome has been highly rewarded (making it an exploitative choice) or not. Here, choices are divided into exploratory (new, not yet chosen), exploitative (old, maximum value choice), or old, non-exploitative (old, non-maximum value choice). The distributions of each category of choices are also plotted to see how choices compare to what would result from random selection.
+
+```{r}
+uff$exp_type=as.factor(ifelse(uff$u==1,2,ifelse(uff$v_bayes_selected==1,1,0)))
+levels(uff$exp_type)=c('old choice, non-exploitative','old choice, exploitative','new choice (exploration)')
+
+ggplot(uff,aes(x=num_segments,fill=exp_type))+geom_bar(position='fill')+xlab('Number of Segments')+
+  geom_segment(aes(x=0.55,xend=1.45,y=.25,yend=.25),lty=2)+
+  geom_segment(aes(x=1.55,xend=2.45,y=.375,yend=.375),lty=2)+
+  scale_fill_discrete(name='Type of Choice')+ylab('Proportion Chosen')+
+  scale_y_continuous(breaks=c(0,0.25,0.5,0.75,1))+
+  ggtitle('Initial Exploration by Number of Segments')
+
+ggplot(uff,aes(x=show_points,fill=exp_type))+geom_bar(position='fill')+xlab('Points Shown')+
+  geom_segment(aes(x=0.55,xend=1.45,y=.3125,yend=.3125),lty=2)+
+  geom_segment(aes(x=1.55,xend=2.45,y=.3125,yend=.3125),lty=2)+
+  scale_fill_discrete(name='Type of Choice')+ylab('Proportion Chosen')+
+  scale_y_continuous(breaks=c(0,0.25,0.5,0.75,1))+
+  ggtitle('Initial Exploration by Points Shown')
+
+ggplot(uff,aes(x=num_segments,fill=exp_type))+geom_bar(position='fill')+xlab('Number of Segments')+
+  geom_segment(aes(x=0.55,xend=1.45,y=.25,yend=.25),lty=2)+
+  geom_segment(aes(x=1.55,xend=2.45,y=.375,yend=.375),lty=2)+
+  scale_fill_discrete(name='Type of Choice')+ylab('Proportion Chosen')+
+  scale_y_continuous(breaks=c(0,0.25,0.5,0.75,1))+
+  facet_wrap(~show_points)+ggtitle('Initial Exploration by Number of Segments & Points Shown')
+
+#compare to chance performance
+uff4=uff[uff$num_segments==4,]
+uff8=uff[uff$num_segments==8,]
+uff_value_dist=matrix(data=NA,ncol=4,nrow=12)
+uff_value_dist[1,]=c(sum(length(which(uff4[uff4$show_points==0,]$v_bayes1<1)),length(which(uff4[uff4$show_points==0,]$v_bayes2<1)),length(which(uff4[uff4$show_points==0,]$v_bayes3<1)),length(which(uff4[uff4$show_points==0,]$v_bayes4<1)))/(2*dim(uff4)[1]),0,0,4)
+uff_value_dist[2,]=c(sum(length(which(uff4[uff4$show_points==0,]$v_bayes1==1)),length(which(uff4[uff4$show_points==0,]$v_bayes2==1)),length(which(uff4[uff4$show_points==0,]$v_bayes3==1)),length(which(uff4[uff4$show_points==0,]$v_bayes4==1)))/(2*dim(uff4)[1]),1,0,4)
+uff_value_dist[3,]=c(sum(length(which(uff4[uff4$show_points==0,]$uncertainty1==1)),length(which(uff4[uff4$show_points==0,]$uncertainty2==1)),length(which(uff4[uff4$show_points==0,]$uncertainty3==1)),length(which(uff4[uff4$show_points==0,]$uncertainty4==1)))/(2*dim(uff4)[1]),2,0,4)
+uff_value_dist[4,]=c(sum(length(which(uff4[uff4$show_points==1,]$v_bayes1<1)),length(which(uff4[uff4$show_points==1,]$v_bayes2<1)),length(which(uff4[uff4$show_points==1,]$v_bayes3<1)),length(which(uff4[uff4$show_points==1,]$v_bayes4<1)))/(2*dim(uff4)[1]),0,1,4)
+uff_value_dist[5,]=c(sum(length(which(uff4[uff4$show_points==1,]$v_bayes1==1)),length(which(uff4[uff4$show_points==1,]$v_bayes2==1)),length(which(uff4[uff4$show_points==1,]$v_bayes3==1)),length(which(uff4[uff4$show_points==1,]$v_bayes4==1)))/(2*dim(uff4)[1]),1,1,4)
+uff_value_dist[6,]=c(sum(length(which(uff4[uff4$show_points==1,]$uncertainty1==1)),length(which(uff4[uff4$show_points==1,]$uncertainty2==1)),length(which(uff4[uff4$show_points==1,]$uncertainty3==1)),length(which(uff4[uff4$show_points==1,]$uncertainty4==1)))/(2*dim(uff4)[1]),2,1,4)
+uff_value_dist[7,]=c(sum(length(which(uff8[uff8$show_points==0,]$v_bayes1<1)),length(which(uff8[uff8$show_points==0,]$v_bayes2<1)),length(which(uff8[uff8$show_points==0,]$v_bayes3<1)),length(which(uff8[uff8$show_points==0,]$v_bayes4<1)),length(which(uff8[uff8$show_points==0,]$v_bayes5<1)),length(which(uff8[uff8$show_points==0,]$v_bayes6<1)),length(which(uff8[uff8$show_points==0,]$v_bayes7<1)),length(which(uff8[uff8$show_points==0,]$v_bayes8<1)))/(4*dim(uff8)[1]),0,0,8)
+uff_value_dist[8,]=c(sum(length(which(uff8[uff8$show_points==0,]$v_bayes1==1)),length(which(uff8[uff8$show_points==0,]$v_bayes2==1)),length(which(uff8[uff8$show_points==0,]$v_bayes3==1)),length(which(uff8[uff8$show_points==0,]$v_bayes4==1)),length(which(uff8[uff8$show_points==0,]$v_bayes5==1)),length(which(uff8[uff8$show_points==0,]$v_bayes6==1)),length(which(uff8[uff8$show_points==0,]$v_bayes7==1)),length(which(uff8[uff8$show_points==0,]$v_bayes8==1)))/(4*dim(uff8)[1]),1,0,8)
+uff_value_dist[9,]=c(sum(length(which(uff8[uff8$show_points==0,]$uncertainty1==1)),length(which(uff8[uff8$show_points==0,]$uncertainty2==1)),length(which(uff8[uff8$show_points==0,]$uncertainty3==1)),length(which(uff8[uff8$show_points==0,]$uncertainty4==1)),length(which(uff8[uff8$show_points==0,]$uncertainty5==1)),length(which(uff8[uff8$show_points==0,]$uncertainty6==1)),length(which(uff8[uff8$show_points==0,]$uncertainty7==1)),length(which(uff8[uff8$show_points==0,]$uncertainty8==1)))/(4*dim(uff8)[1]),2,0,8)
+uff_value_dist[10,]=c(sum(length(which(uff8[uff8$show_points==1,]$v_bayes1<1)),length(which(uff8[uff8$show_points==1,]$v_bayes2<1)),length(which(uff8[uff8$show_points==1,]$v_bayes3<1)),length(which(uff8[uff8$show_points==1,]$v_bayes4<1)),length(which(uff8[uff8$show_points==1,]$v_bayes5<1)),length(which(uff8[uff8$show_points==1,]$v_bayes6<1)),length(which(uff8[uff8$show_points==1,]$v_bayes7<1)),length(which(uff8[uff8$show_points==1,]$v_bayes8<1)))/(4*dim(uff8)[1]),0,1,8)
+uff_value_dist[11,]=c(sum(length(which(uff8[uff8$show_points==1,]$v_bayes1==1)),length(which(uff8[uff8$show_points==1,]$v_bayes2==1)),length(which(uff8[uff8$show_points==1,]$v_bayes3==1)),length(which(uff8[uff8$show_points==1,]$v_bayes4==1)),length(which(uff8[uff8$show_points==1,]$v_bayes5==1)),length(which(uff8[uff8$show_points==1,]$v_bayes6==1)),length(which(uff8[uff8$show_points==1,]$v_bayes7==1)),length(which(uff8[uff8$show_points==1,]$v_bayes8==1)))/(4*dim(uff8)[1]),1,1,8)
+uff_value_dist[12,]=c(sum(length(which(uff8[uff8$show_points==1,]$uncertainty1==1)),length(which(uff8[uff8$show_points==1,]$uncertainty2==1)),length(which(uff8[uff8$show_points==1,]$uncertainty3==1)),length(which(uff8[uff8$show_points==1,]$uncertainty4==1)),length(which(uff8[uff8$show_points==1,]$uncertainty5==1)),length(which(uff8[uff8$show_points==1,]$uncertainty6==1)),length(which(uff8[uff8$show_points==1,]$uncertainty7==1)),length(which(uff8[uff8$show_points==1,]$uncertainty8==1)))/(4*dim(uff8)[1]),2,1,8)
+
+uff_value_dist=as.data.frame(uff_value_dist)
+names(uff_value_dist)=c('num_options','choice_type','show_points','num_segments')
+uff_value_dist$choice_type=as.factor(uff_value_dist$choice_type)
+levels(uff_value_dist$choice_type)=c('old choice, non-exploitative','old choice, exploitative','new choice (exploration)')
+uff_value_dist$show_points=as.factor(uff_value_dist$show_points)
+uff_value_dist$num_segments=as.factor(uff_value_dist$num_segments)
+
+ggplot(uff_value_dist,aes(x=num_segments,y=num_options,fill=choice_type))+geom_bar(position='stack',alpha=0.3,stat='identity')+xlab('Number of Segments')+
+  # geom_segment(aes(x=0.55,xend=1.45,y=.25,yend=.25),lty=2)+
+  # geom_segment(aes(x=1.55,xend=2.45,y=.375,yend=.375),lty=2)+
+  scale_fill_discrete(name='Type of Choice')+ylab('Proportion Available')+
+  # scale_y_continuous(breaks=c(0,0.25,0.5,0.75,1))+
+  facet_wrap(~show_points)+ggtitle('Initial Choice Distribution by Number of Segments & Points Shown')
+
+#test for differences
+uff4_nopts=uff4[uff4$show_points==0,]
+uff4_pts=uff4[uff4$show_points==1,]
+uff8_nopts=uff8[uff8$show_points==0,]
+uff8_pts=uff8[uff8$show_points==1,]
+uff_value_dist$observed=c(as.numeric(table(uff4[uff4$show_points==0,]$exp_type)),
+                          as.numeric(table(uff4[uff4$show_points==1,]$exp_type)),
+                          as.numeric(table(uff8[uff8$show_points==0,]$exp_type)),
+                          as.numeric(table(uff8[uff8$show_points==1,]$exp_type)))
+uff_value_dist$obs_prob=NA
+uff_value_dist$obs_prob[1:3]=uff_value_dist$observed[1:3]/sum(uff_value_dist$observed[1:3])
+uff_value_dist$obs_prob[4:6]=uff_value_dist$observed[4:6]/sum(uff_value_dist$observed[4:6])
+uff_value_dist$obs_prob[7:9]=uff_value_dist$observed[7:9]/sum(uff_value_dist$observed[7:9])
+uff_value_dist$obs_prob[10:12]=uff_value_dist$observed[10:12]/sum(uff_value_dist$observed[10:12])
+
+#no pts shown vs. pts
+chisq.test(uff_value_dist$observed[1:3],p=uff_value_dist$obs_prob[4:6]) #x2=10.32, p=.006
+chisq.test(uff_value_dist$observed[7:9],p=uff_value_dist$obs_prob[10:12]) #x2=15.79, p<.001
+#4 vs. 8 segments
+chisq.test(uff_value_dist$observed[1:3],p=uff_value_dist$obs_prob[7:9]) #x2=11.75, p=0.002
+chisq.test(uff_value_dist$observed[4:6],p=uff_value_dist$obs_prob[10:12]) #x2=2.60, p=0.27
+
+#collapse over pts shown
+uff_value_dist_collpts=as.data.frame(cbind(rbind(mean(uff_value_dist$num_options[1],uff_value_dist$num_options[4]),
+                                   mean(uff_value_dist$num_options[2],uff_value_dist$num_options[5]),
+                                   mean(uff_value_dist$num_options[3],uff_value_dist$num_options[6]),
+                                   mean(uff_value_dist$num_options[7],uff_value_dist$num_options[10]),
+                                   mean(uff_value_dist$num_options[8],uff_value_dist$num_options[11]),
+                                   mean(uff_value_dist$num_options[9],uff_value_dist$num_options[12])),
+                             uff_value_dist$choice_type[1:6],
+                             c(uff_value_dist$num_segments[1:3],uff_value_dist$num_segments[7:9]),
+                             rbind(sum(uff_value_dist$observed[1],uff_value_dist$observed[4]),
+                                   sum(uff_value_dist$observed[2],uff_value_dist$observed[5]),
+                                   sum(uff_value_dist$observed[3],uff_value_dist$observed[6]),
+                                   sum(uff_value_dist$observed[7],uff_value_dist$observed[10]),
+                                   sum(uff_value_dist$observed[8],uff_value_dist$observed[11]),
+                                   sum(uff_value_dist$observed[9],uff_value_dist$observed[12]))))
+names(uff_value_dist_collpts)=c("num_options","choice_type","num_segments","observed")
+uff_value_dist_collpts$obs_prob=NA
+uff_value_dist_collpts$obs_prob[1:3]=uff_value_dist_collpts$observed[1:3]/sum(uff_value_dist_collpts$observed[1:3])
+uff_value_dist_collpts$obs_prob[4:6]=uff_value_dist_collpts$observed[4:6]/sum(uff_value_dist_collpts$observed[4:6])
+chisq.test(uff_value_dist_collpts$observed[1:3],p=uff_value_dist_collpts$obs_prob[4:6]) #x2=11.084, p=.003
+
+#collapse over number of segments
+uff_value_dist_collsegs=as.data.frame(cbind(rbind(mean(uff_value_dist$num_options[1],uff_value_dist$num_options[7]),
+                                   mean(uff_value_dist$num_options[2],uff_value_dist$num_options[8]),
+                                   mean(uff_value_dist$num_options[3],uff_value_dist$num_options[9]),
+                                   mean(uff_value_dist$num_options[4],uff_value_dist$num_options[10]),
+                                   mean(uff_value_dist$num_options[5],uff_value_dist$num_options[11]),
+                                   mean(uff_value_dist$num_options[6],uff_value_dist$num_options[12])),
+                             uff_value_dist$choice_type[1:6],
+                             uff_value_dist$show_points[1:6],
+                             rbind(sum(uff_value_dist$observed[1],uff_value_dist$observed[7]),
+                                   sum(uff_value_dist$observed[2],uff_value_dist$observed[8]),
+                                   sum(uff_value_dist$observed[3],uff_value_dist$observed[9]),
+                                   sum(uff_value_dist$observed[4],uff_value_dist$observed[10]),
+                                   sum(uff_value_dist$observed[5],uff_value_dist$observed[11]),
+                                   sum(uff_value_dist$observed[6],uff_value_dist$observed[12]))))
+names(uff_value_dist_collsegs)=c("num_options","choice_type","show_points","observed")
+uff_value_dist_collsegs$obs_prob=NA
+uff_value_dist_collsegs$obs_prob[1:3]=uff_value_dist_collsegs$observed[1:3]/sum(uff_value_dist_collsegs$observed[1:3])
+uff_value_dist_collsegs$obs_prob[4:6]=uff_value_dist_collsegs$observed[4:6]/sum(uff_value_dist_collsegs$observed[4:6])
+chisq.test(uff_value_dist_collsegs$observed[1:3],p=uff_value_dist_collsegs$obs_prob[4:6]) #x2=24.97, p=<.001
+
+#test vs. chance
+chisq.test(uff_value_dist$observed,p=uff_value_dist$num_options/4) #all: x2=143.3, p<.001
+chisq.test(uff_value_dist$observed[1:3],p=uff_value_dist$num_options[1:3]) #4 seg, no pts: x2=31.9, p<.001 
+chisq.test(uff_value_dist$observed[4:6],p=uff_value_dist$num_options[4:6]) #4 seg, pts: x2=27.1, p<.001
+chisq.test(uff_value_dist$observed[7:9],p=uff_value_dist$num_options[7:9]) #8 seg, no pts: x2=50.4, p<.001
+chisq.test(uff_value_dist$observed[10:12],p=uff_value_dist$num_options[10:12]) #8 seg, pts: x2=33.8, p<.001
+#collapsed across pts shown
+chisq.test(uff_value_dist_collpts$observed,p=uff_value_dist_collpts$num_options/2) #x2=104, p<.001
+chisq.test(uff_value_dist_collpts$observed[1:3],p=uff_value_dist_collpts$num_options[1:3]) #x2=47.7, p<.001
+chisq.test(uff_value_dist_collpts$observed[4:6],p=uff_value_dist_collpts$num_options[4:6]) #x2=56.3, p<.001
+#collapsed across segments
+chisq.test(uff_value_dist_collsegs$observed,p=uff_value_dist_collsegs$num_options/2) #x2=96.2, p<.001
+chisq.test(uff_value_dist_collsegs$observed[1:3],p=uff_value_dist_collsegs$num_options[1:3]) #x2=54.3, p<.001
+chisq.test(uff_value_dist_collsegs$observed[4:6],p=uff_value_dist_collsegs$num_options[4:6]) #x2=41.9, p<.001
+
+```
+
+These results show that the effects on uncertainty seeking differ by points shown vs. number of segments. The number of segments does not change the frequency of exploitative choices, but makes non-explotative choices (versus exploratory) more likely. Meanwhile, whether points are shown affects the proportion of exploratory vs. exploitative choics without affecting the proportion of non-exploitative choices. 
+
+
+#### Changes in uncertainty in later trials
+
+How is the variance of the distribution of possible outcomes for a segment (uncertainty) affected by task variables? (note: uncertainty as defined here is somewhat related to value, as medium value options have the highest uncertainty relative to low and high value options)
+
+```{r}
+
+# plot ####
+ggplot(fdf,aes(trial, dBetaSigmaSquare_selected,color = num_segments, lty = show_points)) +
+  geom_smooth(method="loess")
+ggplot(fdf,aes(trial, dBetaSigmaSquare_selected,color = num_segments, lty = show_points)) +
+  geom_smooth(method="loess")+facet_wrap(~forced_sampling)
+
+# statistics ####
+lu1 <- lmer(dBetaSigmaSquare_selected ~ (num_segments+show_points+scale(trial_adj)+forced_sampling)^3
+           + (1|ID/block_num), fdf)
+summary(lu1)
+lu2 <- lmer(dBetaSigmaSquare_selected ~ (num_segments+show_points+scale(trial_adj)+forced_sampling)^4
+           + (1|ID/block_num), fdf)
+summary(lu2)
+anova(lu1,lu2)
+```
+
+By design, uncertainty is higher overall and decreases more slowly with eight segments versus four because of the greater number of options. There is also a large decrease in uncertainty over time (main effect of trial).
+
+A small effect of uneven initial sampling shows that uncertainty is larger overall compared to even initial sampling. The points x segment interaction shows that overall, showing points has lower uncertainty with four segments but higher with eight segments. There's also a segment x trial x sampling interaction, indicating that uncertainty decreases more slowly with eight segments and uneven sampling, and a points x trial x sampling interaction showing greater reduction in uncertainty over time with uneven sampling when points are shown. 
+
+Allowing a four-way interaction shows some additional effects as well. 
+Overall, the interactions with segment are hard to interpret due to the overall higher uncertainty. For points, however, it seems that showing points does not have a large effect though it does have an interaction with initial uneven sampling. The type of initial sampling also does not have a large effect, though its higher overall uncertainty combined with a larger reduction in uncertainty over time suggests that the initial greater uncertainty caused by uneven sampling is eventually overcome, perhaps by strategic exploration. 
+
+#### Uncertainty-dependent choices in later trials
+How does uncertainty affect whether a segment is chosen or not?
+
+Note that data here are in a longer format with an observation per segment per trial noting if that segment was chosen or not (the structure of this model may need some tweaking).
+```{r}
+#split by number of segments & run separately due to confound
+ldf_4=ldf[ldf$num_segments==4,]
+ldf_8=ldf[ldf$num_segments==8,]
+
+s1_4=glmer(seg_chosen~scale(rel_mu)*(points_resc+sampling_resc+scale(trial_adj))^2+(1|ID/trial_adj),
+         data=ldf_4,family='binomial')
+summary(s1_4)
+#car::Anova(s1_4,'3')
+s1_8=glmer(seg_chosen~scale(rel_mu)*(points_resc+sampling_resc+scale(trial_adj))^2+(1|ID/trial_adj),
+         data=ldf_8,family='binomial')
+summary(s1_8)
+#car::Anova(s1_8,'3')
+
+s2_4=glmer(seg_chosen~(scale(rel_mu)+scale(rel_sigma2))*(points_resc+sampling_resc+scale(trial_adj))^2+
+           (1|ID/trial_adj),data=ldf_4,family='binomial')
+summary(s2_4)
+#car::Anova(s2_4,'3')
+s2_8=glmer(seg_chosen~(scale(rel_mu)+scale(rel_sigma2))*(points_resc+sampling_resc+scale(trial_adj))^2+
+           (1|ID/trial_adj),data=ldf_8,family='binomial')
+summary(s2_8)
+#car::Anova(s2_8,'3')
+
+s3_4=glmer(seg_chosen~scale(rel_sigma2)*(points_resc+sampling_resc+scale(trial_adj))^2+(1|ID/trial_adj),
+         data=ldf_4,family='binomial')
+summary(s3_4)
+#car::Anova(s3_4,'3')
+s3_8=glmer(seg_chosen~scale(rel_sigma2)*(points_resc+sampling_resc+scale(trial_adj))^2+(1|ID/trial_adj),
+         data=ldf_8,family='binomial')
+summary(s3_8)
+#car::Anova(s3_8,'3')
+```
+
+In these models, we're trying to predict the likelihood of choosing each segment based on value (rel_mu), uncertainty (rel_sigma2), or both.
+
+For value only, higher valued segments are more likely to be chosen, an effect that is larger when points are shown and increases over time. For eight segments only, this is also a larger effect with uneven sampling. For four segments only, the increased effect of value on choice over time is greater when points are shown.
+
+Uncertain segments are less likely to be chosen, an effect that increases over time but less so when points are shown. This effect is also weaker with uneven initial sampling. For four segments only, showing points makes uncertain segments less likely to be chosen, while for eight segments this effect is only present with uneven sampling. 
+
+When including value and uncertainty in the same model, uneven initial sampling increases the effect of value on choice and weakens the effect of uncertainty. Both value and uncertainty show reduced effects over time, though this may primarily be due to biases in early value and uncertainty induced by sampling. Showing points makes higher valued options more likely to be chosen and, for four segments, makes uncertain segments less likely but for eight segments makes uncertain segments more likely. 
+
+The effects of showing points suggest that, when participants are able to see past outcomes, they are more likely to choose higher valued options. They are also more likely to choose uncertain options with more overall options (eight segments) but less likely with fewer (four). Uneven sampling leads to people choosing higher valued but also more uncertain options.
+
+Interestingly, the interaction of the effect of showing points and the number of segments is opposite that found for initial sampling above- with four segments, showing points creates initial uncertainty seeking and then later uncertainty aversion, while the effect of showing points is opposite for eight segments.
+
+#### Uncertainty-dependent choices in later trials, excluding early trials 
+
+Value and uncertainty should be decorrelated in later trials, enabling investigation of separable effects on choices
+Exclusion of two types of trials will be tested: trials with biased values due to initial sampling, and first half of trials. 
+The first type of trial is defined as trials where the average value is consistently greater than the next trial (that is, trials before the inflection point of value)- trials <9 for 4 segments and trials <14 for 8 segments. 
+
+```{r}
+# plot relationship between value (x axis) and variance (y) by trials excluded
+ggplot(fdf,aes(dBetaMu_selected,dBetaSigmaSquare_selected))+geom_point()+geom_smooth()+
+  coord_cartesian(ylim=c(0,0.09),xlim=c(0.1,0.9))
+fdf_nbv=subset(fdf,trial>13|(trial>8 & num_segments==4))
+ggplot(fdf_nbv,aes(dBetaMu_selected,dBetaSigmaSquare_selected))+geom_point()+geom_smooth()+
+  coord_cartesian(ylim=c(0,0.09),xlim=c(0.1,0.9))
+fdf_2nd=subset(fdf,trial>23|(trial>19 & num_segments==4))
+ggplot(fdf_2nd,aes(dBetaMu_selected,dBetaSigmaSquare_selected))+geom_point()+geom_smooth()+
+  coord_cartesian(ylim=c(0,0.09),xlim=c(0.1,0.9))
+fdf_last10=subset(fdf,trial>28|(trial>24 & num_segments==4))
+ggplot(fdf_last10,aes(dBetaMu_selected,dBetaSigmaSquare_selected))+geom_point()+geom_smooth()+
+  coord_cartesian(ylim=c(0,0.09),xlim=c(0.1,0.9))
+
+#look at effects of value & variance on choice in second half of trials
+ldf_4_2nd=ldf_4[ldf_4$trial>19,]
+ldf_8_2nd=ldf_8[ldf_8$trial>23,]
+
+s2_4_2nd=glmer(seg_chosen~(scale(rel_mu)+scale(rel_sigma2))*(points_resc+sampling_resc+scale(trial_adj))^2+
+           (1|ID/trial_adj),data=ldf_4_2nd,family='binomial')
+summary(s2_4_2nd)
+#car::Anova(s2_4,'3')
+s2_8_2nd=glmer(seg_chosen~(scale(rel_mu)+scale(rel_sigma2))*(points_resc+sampling_resc+scale(trial_adj))^2+
+           (1|ID/trial_adj),data=ldf_8_2nd,family='binomial')
+summary(s2_8_2nd)
+#car::Anova(s2_8,'3')
+
+
+```
+
+When comparing these results to the model above with all trials, we see a preserved effect of initial uneven sampling increasing the effect of value and decreasing the effect of uncertainty on choices. The interactions with trial number are gone. Showing points still strengthens the effect of value on choice, though this is more significant for 8 segments, and still has opposite interactions with uncertainty depending on the number of segments. 
+
+#### Narrowing of options over time by cognitive load
+
+Do task factors (sampling and cognitive load) affect how people narrow their choices over time as they switch from exploration to exploitation? 
+
+In this analysis, we'll use the sampling history of each choice, normalized by the number of possible segments (# times option is selected, divided by the trial number and multiplied by the number of segments). If this value is at 1, sampling is random, and values greater than one indicate that the currently chosen option has been chosen more than other options in past trials. Normalizing by # of segments also eliminates this confound. 
+
+```{r}
+# plot ####
+ggplot(fdf,aes(x=trial_adj,y=samplehx_selected_adj_ns,color=num_segments,lty=show_points))+
+  geom_hline(yintercept=1)+geom_smooth(method="loess")+
+  labs(x='Trial',y='Past Choices of Current Option, \nNormalized by Trial & # of Segments')+
+  facet_wrap(~forced_sampling)
+
+# statistics ####
+n1=lmer(samplehx_selected_adj_ns~show_points*num_segments*forced_sampling*scale(trial_adj) +
+          (1|ID/block_num), fdf)
+summary(n1)
+
+# relationship between narrowing and relative value ####
+fdf$mu_sel_bymax=fdf$dBetaMu_selected/fdf$mu_max 
+summary(lm(samplehx_selected_adj_ns~mu_sel_bymax*(scale(trial)+show_points+num_segments+forced_sampling)^2,data=fdf))
+
+# non-interaction of relative value shows expected pos. relationship between trial and sampling history
+summary(lm(samplehx_selected_adj_ns~mu_sel_bymax+scale(trial),data=fdf))
+# absent w/interaction between trial and relative value: accounting for value, sampling history decreases with trials
+# so: narrowing of options becomes more value-dependent with trials
+summary(lm(samplehx_selected_adj_ns~mu_sel_bymax*scale(trial),data=fdf))
+
+#plot w/median split of relative value
+fdf$mu_sel_bymax_med=as.factor(ifelse(fdf$mu_sel_bymax>median(fdf$mu_sel_bymax),1,0))
+levels(fdf$mu_sel_bymax_med)=c('< median relative value','> median relative value')
+ggplot(fdf,aes(x=trial_adj,y=samplehx_selected_adj_ns,color=num_segments,lty=show_points))+
+  geom_hline(yintercept=1)+geom_smooth(method="loess")+
+  labs(x='Trial',y='Past Choices of Current Option, \nNormalized by Trial & # of Segments')+
+  facet_wrap(mu_sel_bymax_med~forced_sampling)
+
+#binarize relative value into maximum value (or not)
+summary(lm(samplehx_selected_adj_ns~dBetaMu_isSelectedMax*(scale(trial)+show_points+num_segments+forced_sampling)^2,data=fdf))
+fdf$dBetaMu_isSelectedMax_fac=as.factor(fdf$dBetaMu_isSelectedMax)
+levels(fdf$dBetaMu_isSelectedMax_fac)=c('choice less than max value','choice is max value')
+ggplot(fdf,aes(x=trial_adj,y=samplehx_selected_adj_ns,color=num_segments,lty=show_points))+
+  geom_hline(yintercept=1)+geom_smooth(method="loess")+
+  labs(x='Trial',y='Past Choices of Current Option, \nNormalized by Trial & # of Segments')+
+  facet_wrap(dBetaMu_isSelectedMax_fac~forced_sampling)
+
+# relationship with forced choice options in uneven sampling ####
+# forced_sample_sel: # of times option chosen during forced sampling in that block
+#only blocks with uneven sampling
+fdf_uneven=fdf[fdf$forced_sampling=='uneven',]
+# 
+# # n2=lmer(samplehx_selected_adj_ns~show_points*num_segments*scale(trial_adj)*forced_sample_sel +
+# #           (1|ID/block_num), fdf_uneven)
+summary(n2)
+n3=lmer(samplehx_selected_adj_ns~forced_sample_sel*mu_sel_bymax*(scale(trial)+show_points+num_segments)^3 +
+          (1|ID/block_num), fdf_uneven)
+summary(n3) #relative value accounts for most effects
+anova(n2,n3) #model w/value is a much better fit
+
+#same results if forced sampling hx is binarized
+fdf_uneven$forced_sample_sel_bin=ifelse(fdf_uneven$forced_sample_sel>0,1,0)
+n2b=lmer(samplehx_selected_adj_ns~show_points*num_segments*scale(trial_adj)*forced_sample_sel_bin +
+          (1|ID/block_num), fdf_uneven)
+summary(n2b)
+n3b=lmer(samplehx_selected_adj_ns~forced_sample_sel_bin*mu_sel_bymax*(scale(trial)+show_points+num_segments)^3 +
+          (1|ID/block_num), fdf_uneven)
+summary(n3b)
+anova(n2b,n3b)
+
+
+```
+
+Here, the y axis is the number of times the present option has been chosen, normalized by trial number and the number of segments present. People tend to make narrower choices overall and get narrower over time with eight segments, an effect that is somewhat counteracted by showing points (segment x point and segment x point x trial interaction). With eight segments and uneven sampling, intially narrower choices then narrow less over time (semgents x sampling x trial interaction), perhaps reflecting that people get stuck in a subset of segments that they do not continue to narrow over time. When points are shown, people narrow their choices more over time (point x trial interaction). The additional four-way interaction with points, segments, trial, and sampling suggests that the phenomenon of getting stuck in a subset of choices with eight segments and uneven sampling is less pronounced when points are shown. 
+
+When viewed in light of the previous effects of the number of segments and points shown on uncertainty, this suggests that people narrow options too much (are too uncertainty averse) with eight segments and that showing points counteracts this somewhat, whereas with four segments people are narrowing options after intial exploration, and showing points helps this later narrowing, which presents as uncertainty aversion. 
+
+How do other factors (value of narrowed choices, segments chosen during initial forced choice sampling, and spatial proximity) affect this narrowing?
+
+#### Narrowing of options over time: effects of value, initial sampling, and spatial proximity
+
+```{r}
+# relationship between narrowing and relative value ####
+fdf$mu_sel_bymax=fdf$dBetaMu_selected/fdf$mu_max 
+summary(lm(samplehx_selected_adj_ns~mu_sel_bymax*(scale(trial)+show_points+num_segments+forced_sampling)^2,data=fdf))
+
+# non-interaction of relative value shows expected pos. relationship between trial and sampling history
+summary(lm(samplehx_selected_adj_ns~mu_sel_bymax+scale(trial),data=fdf))
+# absent w/interaction between trial and relative value: accounting for value, sampling history decreases with trials
+# so: narrowing of options becomes more value-dependent with trials
+summary(lm(samplehx_selected_adj_ns~mu_sel_bymax*scale(trial),data=fdf))
+
+#plot w/median split of relative value
+fdf$mu_sel_bymax_med=as.factor(ifelse(fdf$mu_sel_bymax>median(fdf$mu_sel_bymax),1,0))
+levels(fdf$mu_sel_bymax_med)=c('< median relative value','> median relative value')
+ggplot(fdf,aes(x=trial_adj,y=samplehx_selected_adj_ns,color=num_segments,lty=show_points))+
+  geom_hline(yintercept=1)+geom_smooth(method="loess")+
+  labs(x='Trial',y='Past Choices of Current Option, \nNormalized by Trial & # of Segments')+
+  facet_wrap(mu_sel_bymax_med~forced_sampling)
+
+#binarize relative value into maximum value (or not)
+summary(lm(samplehx_selected_adj_ns~dBetaMu_isSelectedMax*(scale(trial)+show_points+num_segments+forced_sampling)^2,data=fdf))
+fdf$dBetaMu_isSelectedMax_fac=as.factor(fdf$dBetaMu_isSelectedMax)
+levels(fdf$dBetaMu_isSelectedMax_fac)=c('choice less than max value','choice is max value')
+ggplot(fdf,aes(x=trial_adj,y=samplehx_selected_adj_ns,color=num_segments,lty=show_points))+
+  geom_hline(yintercept=1)+geom_smooth(method="loess")+
+  labs(x='Trial',y='Past Choices of Current Option, \nNormalized by Trial & # of Segments')+
+  facet_wrap(dBetaMu_isSelectedMax_fac~forced_sampling)
+
+# relationship with forced choice options in uneven sampling ####
+
+# forced_sample_sel: # of times option chosen during forced sampling in that block
+#only blocks with uneven sampling
+fdf_uneven=fdf[fdf$forced_sampling=='uneven',]
+
+n2_fc=lmer(samplehx_selected_adj_ns~show_points*num_segments*scale(trial_adj)*forced_sample_sel +
+          (1|ID/block_num), fdf_uneven)
+summary(n2_fc)
+n3_fc=lmer(samplehx_selected_adj_ns~forced_sample_sel*mu_sel_bymax*(scale(trial)+show_points+num_segments)^3 +
+          (1|ID/block_num), fdf_uneven)
+summary(n3_fc) #relative value accounts for most effects
+anova(n2_fc,n3_fc) #model w/value is a much better fit
+
+#same results if forced sampling hx is binarized
+fdf_uneven$forced_sample_sel_bin=ifelse(fdf_uneven$forced_sample_sel>0,1,0)
+n2_fcb=lmer(samplehx_selected_adj_ns~show_points*num_segments*scale(trial_adj)*forced_sample_sel_bin +
+          (1|ID/block_num), fdf_uneven)
+summary(n2_fcb)
+n3_fcb=lmer(samplehx_selected_adj_ns~forced_sample_sel_bin*mu_sel_bymax*(scale(trial)+show_points+num_segments)^3 +
+          (1|ID/block_num), fdf_uneven)
+summary(n3_fcb) 
+anova(n2_fcb,n3_fcb)
+
+# spatial proximity of narrowed options ####
+#only use trials with a subsequent switch & split by number of segments
+fdfs=fdf[fdf$next_switch==1,]
+fdfs=fdfs[!is.na(fdfs$show_points),]
+fdfs8=fdfs[fdfs$num_segments==8,]
+fdfs4=fdfs[fdfs$num_segments==4,]
+
+#without relative value
+n4_4=lm(samplehx_selected_adj_ns~next_seg_dist*(scale(trial)+show_points+forced_sampling)^2,data=fdfs4)
+summary(n4_4)
+n4_8=lm(samplehx_selected_adj_ns~next_seg_dist*(scale(trial)+show_points+forced_sampling)^2,data=fdfs8)
+summary(n4_8)
+
+#with relative value
+n4v_4=lm(samplehx_selected_adj_ns~mu_sel_bymax*next_seg_dist*(scale(trial)+show_points+forced_sampling)^2,data=fdfs4)
+summary(n4v_4)
+n4v_8=lm(samplehx_selected_adj_ns~mu_sel_bymax*next_seg_dist*(scale(trial)+show_points+forced_sampling)^2,data=fdfs8)
+summary(n4v_8)
+anova(n4_4,n4v_4)
+anova(n4_8,n4v_8)
+
+#spatial generalization as dep. variable
+next_seg_lm4=lmer(next_seg_dist~samplehx_selected_adj_ns*(win+show_points+forced_sampling+scale(trial_adj))+(1|ID),data=fdfs4)
+summary(next_seg_lm4)
+next_seg_lm8=lmer(next_seg_dist~samplehx_selected_adj_ns*(win+show_points+forced_sampling+scale(trial_adj))+(1|ID),data=fdfs8)
+summary(next_seg_lm8)
+
+
+```
+
+
+
+#### RT effects: slowing as a function of uncertainty & cognitive load
+```{r}
+
+# plot ####
+ggplot(fdf,aes(trial, RT,color = num_segments, lty = show_points)) +
+  geom_smooth(method="loess")
+
+# statistics ####
+r1 <- lmer(scale(RT) ~ (num_segments+show_points+scale(trial_adj)+dBetaSigmaSquare_selected)^3 +
+             (1|ID/block_num), fdf)
+summary(r1)
+r2 <- lmer(scale(RT) ~ (num_segments+show_points+scale(trial_adj))^3 +
+             (1|ID/block_num), fdf)
+summary(r2)
+```
+
+RTs are faster with greater uncertainty, an effect that becomes stronger over time. People also speed up less over time with greater uncertainty in blocks with eight segments. 
+In a model without uncertainty, we see speeding over time (main effect of trial), an effect that is mostly abolished with eight segments (trial x segment interaction). Additionally, although neither segments nor points directly affect reaction times, there is an interaction of these two variables such that showing points results in overall slower RTs with eight segments but not with four. The slower inital RTs with four segments and the slower sustained RTs with eight segments & points shown suggest people are deliberating more about these choices; these are also the conditions & trials when people are more uncertainty seeking/exploratory. 
+
+
+#### Effects of entropy and information content on switching
+How does entropy (overall and specific to the chosen option) change over time and influence switching behavior?
+```{r}
+#overall entropy
+fdf$pts_seg=as.factor(as.numeric(fdf$show_points)*3-3+as.numeric(fdf$num_segments))
+levels(fdf$pts_seg)=c('4seg_nopts','8seg_nopts','4seg_pts','8seg_pts')
+ggplot(fdf,aes(x=trial_adj,y=Hscaled_show,fill=pts_seg,color=pts_seg,linetype=forced_sampling))+
+  geom_smooth(method="loess",alpha=0.1)+coord_cartesian(ylim=c(-1,1))+theme_classic()
+
+ggplot(fdf[fdf$num_segments==8,],aes(x=trial_adj,y=H,fill=pts_seg,color=pts_seg,linetype=forced_sampling))+
+  geom_smooth(method="loess",alpha=0.1)+theme_classic()
+
+ggplot(fdf[fdf$num_segments==4,],aes(x=trial_adj,y=H,fill=pts_seg,color=pts_seg,linetype=forced_sampling))+
+  geom_smooth(method="loess",alpha=0.1)+theme_classic()
+
+fdf_wswitch=fdf[!is.na(fdf$next_switch),]
+ggplot(fdf_wswitch,aes(x=trial_adj,y=Hscaled_show,fill=pts_seg,color=pts_seg,linetype=as.factor(forced_sampling)))+
+  geom_smooth(method="loess",alpha=0.1)+coord_cartesian(ylim=c(-1,1))+theme_classic()+
+  facet_wrap(~next_switch)
+
+#information content of selected option
+fdf$h_ic_selected=log2(1/fdf$dBetaMu_selected)
+ggplot(fdf,aes(x=trial_adj,y=h_ic_selected,fill=pts_seg,color=pts_seg,linetype=forced_sampling))+
+  geom_smooth(method="loess",alpha=0.1)+theme_classic()
+ggplot(fdf[fdf$num_segments==4,],
+       aes(x=trial_adj,y=h_ic_selected,fill=pts_seg,color=pts_seg,linetype=forced_sampling))+
+  geom_smooth(method="loess",alpha=0.1)+theme_classic()
+ggplot(fdf[fdf$num_segments==8,],
+       aes(x=trial_adj,y=h_ic_selected,fill=pts_seg,color=pts_seg,linetype=forced_sampling))+
+  geom_smooth(method="loess",alpha=0.1)+theme_classic()
+
+ggplot(fdf_wswitch,aes(x=trial_adj,y=h_ic_selected,fill=pts_seg,color=pts_seg,linetype=forced_sampling))+
+  geom_smooth(method="loess",alpha=0.1)+theme_classic()+
+  facet_wrap(~as.factor(next_switch))
+ggplot(fdf_wswitch[fdf_wswitch$num_segments==8,],aes(x=trial_adj,y=h_ic_selected,fill=pts_seg,color=pts_seg,linetype=forced_sampling))+
+  geom_smooth(method="loess",alpha=0.1)+coord_cartesian(ylim=c(0.5,1.3))+theme_classic()+
+  facet_wrap(~as.factor(next_switch))
+ggplot(fdf_wswitch[fdf_wswitch$num_segments==4,],aes(x=trial_adj,y=h_ic_selected,fill=pts_seg,color=pts_seg,linetype=forced_sampling))+
+  geom_smooth(method="loess",alpha=0.1)+coord_cartesian(ylim=c(0.5,1.3))+theme_classic()+
+  facet_wrap(~as.factor(next_switch))
+
+ggplot(fdf_wswitch,aes(x=trial_adj,y=h_ic_selected,fill=pts_seg,color=pts_seg,linetype=as.factor(next_switch)))+
+  geom_smooth(method="loess",alpha=0.1)+theme_classic()+
+  facet_wrap(~forced_sampling)
+
+ggplot(fdf_wswitch[fdf_wswitch$forced_sampling=='even',],aes(x=trial_adj,y=Hscaled_show,fill=pts_seg,color=pts_seg,linetype=as.factor(next_switch)))+
+  geom_smooth(method="loess",alpha=0.1)+coord_cartesian(ylim=c(-1,1))+theme_classic()
+ggplot(fdf_wswitch[fdf_wswitch$forced_sampling=='uneven',],aes(x=trial_adj,y=Hscaled_show,fill=pts_seg,color=pts_seg,linetype=as.factor(next_switch)))+
+  geom_smooth(method="loess",alpha=0.1)+coord_cartesian(ylim=c(-1,1))+theme_classic()
+
+# test relationship between switching (exploration) and entropy
+fdf$num_segments=as.factor(fdf$num_segments)
+fdf$show_points=as.factor(fdf$show_points)
+# glm_switch_Hscaled=glmer(next_switch~(scale(trial_adj)+Hscaled_show+num_segments+show_points+
+#   forced_sampling)^4+(1|ID),data=fdf,family='binomial')
+summary(glm_switch_Hscaled)
+# # lm_switch_Hscaled=lmer(Hscaled_show~(scale(trial_adj)+next_switch+num_segments+show_points+
+# #   forced_sampling)^3+(1|ID),data=fdf)
+# # summary(lm_switch_Hscaled)
+switch_Hscaled_list=list(Hscaled_show=seq(-1,1,by=1),forced_sampling=c('even','uneven'),show_points=c('0','1'),num_segments=c('4','8'))
+emdata_sH=emmip(glm_switch_Hscaled,forced_sampling*show_points*num_segments~Hscaled_show,at=switch_Hscaled_list,CIs=T,plotit=F)
+emdata_sH$forced_sampling=as.factor(emdata_sH$forced_sampling)
+emdata_sH$show_points=as.factor(emdata_sH$show_points)
+emdata_sH$num_segments=as.factor(emdata_sH$num_segments)
+emdata_sH$upperSE=emdata_sH$yvar+emdata_sH$SE
+emdata_sH$lowerSE=emdata_sH$yvar-emdata_sH$SE
+ggplot(emdata_sH,
+  aes(x=Hscaled_show,y=yvar,color=num_segments:show_points,linetype=forced_sampling,fill=num_segments:show_points))+
+  geom_line()+theme_classic()+
+  geom_ribbon(aes(ymax=upperSE,ymin=lowerSE),alpha=0.2,color=NA)+
+  labs(x='Scaled Entropy',y='Predicted Log Odds of Switching',linetype='Initial Sampling',
+       color="Segments : Points Shown",fill="Segments : Points Shown")
+
+# glm_switch_Hic=glmer(next_switch~(scale(trial_adj)+h_ic_selected+num_segments+show_points+
+#   forced_sampling)^4+(1|ID),data=fdf,family='binomial')
+summary(glm_switch_Hic)
+# # lm_switch_Hic=lmer(h_ic_selected~(scale(trial_adj)+next_switch+num_segments+show_points+
+# #   forced_sampling)^3+(1|ID),data=fdf)
+# # summary(lm_switch_Hic)
+switch_Hic_list=list(h_ic_selected=seq(0,2,by=1),forced_sampling=c('even','uneven'),show_points=c('0','1'),num_segments=c('4','8'))
+emdata_sic=emmip(glm_switch_Hic,forced_sampling*show_points*num_segments~h_ic_selected,at=switch_Hic_list,CIs=T,plotit=F)
+emdata_sic$forced_sampling=as.factor(emdata_sic$forced_sampling)
+emdata_sic$show_points=as.factor(emdata_sic$show_points)
+emdata_sic$num_segments=as.factor(emdata_sic$num_segments)
+emdata_sic$upperSE=emdata_sic$yvar+emdata_sic$SE
+emdata_sic$lowerSE=emdata_sic$yvar-emdata_sic$SE
+ggplot(emdata_sic,
+  aes(x=h_ic_selected,y=yvar,color=num_segments:show_points,linetype=forced_sampling,fill=num_segments:show_points))+
+  geom_line()+theme_classic()+
+  geom_ribbon(aes(ymax=upperSE,ymin=lowerSE),alpha=0.2,color=NA)+
+  labs(x='Information Content',y='Predicted Log Odds of Switching',linetype='Initial Sampling',
+       color="Segments : Points Shown",fill="Segments : Points Shown")
+
+# entropy & IC in the same model
+# glm_switch_Hscaled_ic=glmer(next_switch~(scale(trial_adj)+num_segments+show_points+
+#   forced_sampling)^2*(Hscaled_show*h_ic_selected)+(1|ID),data=fdf,family='binomial')
+summary(glm_switch_Hscaled_ic)
+
+# entropy controlling for mamimum available value
+# glm_switch_Hscaled_value=glmer(next_switch~(scale(trial_adj)+num_segments+show_points+
+#   forced_sampling)^2*(Hscaled_show*scale(mu_max))+(1|ID),data=fdf,family='binomial')
+summary(glm_switch_Hscaled_value)
+
+# adding reinforcement (entropy/IC reflecting noise vs. uncertainty-driven search)
+glm_switch_Hscaled_reinf=glmer(next_switch~Hscaled_show*win*(scale(trial_adj)+show_points+
+  forced_sampling+num_segments)^2+(1|ID),data=fdf,family='binomial')
+summary(glm_switch_Hscaled_reinf)
+
+glm_switch_Hic_reinf=glmer(next_switch~h_ic_selected*win*(scale(trial_adj)+num_segments+show_points+
+  forced_sampling)^2+(1|ID),data=fdf,family='binomial')
+summary(glm_switch_Hic_reinf)
+
+glm_switch_Hscaled_ic_reinf=glmer(next_switch~(scale(trial_adj)+num_segments+show_points+
+  forced_sampling+win)^2*(Hscaled_show+h_ic_selected)+(1|ID),data=fdf,family='binomial')
+summary(glm_switch_Hscaled_ic_reinf)
+```
+
+For overall entropy, people are more likely to switch with higher entropy with four segments (regardless of whether points are shown) or with eight segments & points shown. Uneven sampling additionally reduces switching with eight segments & points shown only. Controlling for the maximum available value doesn't change the results much, suggesting these results are related more to overall uncertainty than value. 
+
+For information content of the selected option, similar variables affect the relationship between IC and switching as entropy, but in different directions. Similar to entropy, people are more likely to switch after a choice with high information content, but this effect is stronger for eight segments and no points shown, not weaker as with entropy.  Showing points overall also makes people more likely to switch with high IC. Uneven sampling has 3-way interactions with trial and information content but no major trial-independent interactions. 
+
+Putting both overall entropy and the information content of the selected option results in most findings holding, though some are weaker, suggesting that these have separate effects on behavior. 
+
+Together, these results suggest that people are generally more likely to switch with higher entropy or information content, but that certain conditions with high cognitive load weaken this effect (for entropy) or strengthen it (for information context), suggesting that high cognitive load makes it more difficult for people to make choices based on overall uncertainty and more reliant on local uncertainty (information content). The effect of entropy on switching is weakened with 8 segments along with either no points shown or uneven initial sampling. For information content, the effect is strongest with eight segments and no points shown. 
+
+
+#### Effects of spatial generalization of value
+
+Do people generalize value across segments, and is this affected by entropy?
+
+We can measure this by looking at whether people are more likely to switch to a nearby segment (segment distance of 1) versus other segments. This can be tested either by examining the distribution of segment distances or by comparing the average segment distance (from a multilevel regression) vs. 0. Note that there are two near segments and only one furthest segment, so results need to be scaled by the number of segments with each possible segment distance. For the plot showing the intercept, the red line is the predicted segment distance with no generalization, while the black dot (with 2*SE error lines) is the actual average segment distance. A black dot below the red line indicates people are more likely to switch to near vs. far segments.  
+
+```{r}
+#only use trials with a subsequent switch
+fdfs=fdf[fdf$next_switch==1,]
+fdfs=fdfs[!is.na(fdfs$show_points),]
+#plot
+ggplot(fdfs,aes(x=next_seg_dist,color=show_points,fill=show_points))+
+  geom_histogram(aes(y=..count../sum(..count..)),alpha=0.1,position="identity",bins=4)+
+  facet_wrap(~num_segments*win)
+
+#number of segments is a confound- look at 4 vs. 8 separately
+fdfs8=fdfs[fdfs$num_segments==8,]
+fdfs4=fdfs[fdfs$num_segments==4,]
+
+#check frequencies vs. uniform
+observed4=c(dim(fdfs4[fdfs4$next_seg_dist==1,])[1],dim(fdfs4[fdfs4$next_seg_dist==2,])[1])
+observed8=c(dim(fdfs8[fdfs8$next_seg_dist==1,])[1],dim(fdfs8[fdfs8$next_seg_dist==2,])[1],
+            dim(fdfs8[fdfs8$next_seg_dist==3,])[1],dim(fdfs8[fdfs8$next_seg_dist==4,])[1])
+predicted4=c(2/3*dim(fdfs4)[1],1/3*dim(fdfs4)[1])
+predicted8=c(rep(2/7*dim(fdfs8)[1],3),1/7*dim(fdfs8)[1])
+chisq.test(x=observed4,y=predicted4)
+chisq.test(x=observed8,y=predicted8)
+
+# test intercept value vs. average
+sum_next_seg_lm4_noco=summary(lmer(next_seg_dist~(1|ID),data=fdfs4))
+sum_next_seg_lm8_noco=summary(lmer(next_seg_dist~(1|ID),data=fdfs8))
+plot_sum_next_seg=as.data.frame(cbind(
+  rbind(sum_next_seg_lm4_noco$coefficients[1],sum_next_seg_lm8_noco$coefficients[1]),
+  rbind(sum_next_seg_lm4_noco$coefficients[2],sum_next_seg_lm8_noco$coefficients[2]),
+  rbind(4,8),rbind(mean(c(1,1,2)),mean(c(1,1,2,2,3,3,4)))))
+names(plot_sum_next_seg)=c('Intercept','SE','Number of Segments','Average Distance')
+plot_sum_next_seg$Upper=plot_sum_next_seg$Intercept+2*plot_sum_next_seg$SE
+plot_sum_next_seg$Lower=plot_sum_next_seg$Intercept-2*plot_sum_next_seg$SE
+
+ggplot(plot_sum_next_seg,aes(x=as.factor(`Number of Segments`),y=Intercept))+
+  geom_crossbar(aes(y=`Average Distance`,ymin=`Average Distance`,ymax=`Average Distance`),
+    width=0.5,size=0.5,color='maroon')+geom_point(stroke=1,color='black')+
+  geom_linerange(aes(ymin=Lower,ymax=Upper),lwd=1,color='black')+
+  coord_cartesian(ylim=c(1,2.5))+labs(x='Number of Segments')
+
+#look at effects on spatial generalization
+next_seg_lm4=lmer(next_seg_dist~win*show_points*forced_sampling*scale(trial_adj)+(1|ID),data=fdfs4)
+summary(next_seg_lm4)
+next_seg_lm8=lmer(next_seg_dist~win*show_points*forced_sampling*scale(trial_adj)+(1|ID),data=fdfs8)
+summary(next_seg_lm8)
+
+#separate by wins and losses
+next_seg_lm_win4=lmer(next_seg_dist~show_points*forced_sampling*scale(trial_adj)+(1|ID),data=fdfs4[fdfs4$win==1,])
+summary(next_seg_lm_win4)
+next_seg_lm_win8=lmer(next_seg_dist~show_points*forced_sampling*scale(trial_adj)+(1|ID),data=fdfs8[fdfs8$win==1,])
+summary(next_seg_lm_win8)
+
+next_seg_lm_loss4=lmer(next_seg_dist~show_points*forced_sampling*scale(trial_adj)+(1|ID),data=fdfs4[fdfs4$win==0,])
+summary(next_seg_lm_loss4)
+next_seg_lm_loss8=lmer(next_seg_dist~show_points*forced_sampling*scale(trial_adj)+(1|ID),data=fdfs8[fdfs8$win==0,])
+summary(next_seg_lm_loss8)
+
+#look at effects of entropy- get rid of interactions not w/H since they don't affect anything
+next_seg_lm4_H=lmer(next_seg_dist~(win+show_points+forced_sampling+scale(trial_adj))*Hscaled_show+(1|ID),data=fdfs4)
+summary(next_seg_lm4_H)
+next_seg_lm8_H=lmer(next_seg_dist~(win+show_points+forced_sampling+scale(trial_adj))*Hscaled_show+(1|ID),data=fdfs8)
+summary(next_seg_lm8_H)
+
+```
+
+People seem to generalize value for eight segments, but not four, though this is only significant when looking at the intercept value for the multilevel regression. For four segments, people perform exactly as predicted by no value generalization. Based on the regression, no additional variables (points shown, forced sampling, entropy) affect this, though there are some trend-level effects with entropy.
+
+```{r}
+save.image('all_pie_modelfree.RData')
+```
