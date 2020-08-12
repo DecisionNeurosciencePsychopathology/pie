@@ -105,27 +105,32 @@ ProcApply<-function(multicorenum=1,listx=NULL,FUNC=NULL,...) {
 
 
 #Pie Specific;
-pie_getdata<-function(boxsyncpath=NULL){
+pie_getdata<-function(dataset,boxsyncpath=NULL){
   pieroot<-file.path(boxsyncpath,"skinner","data","matlab task data","pie_task")
   #piedata_raw<-lapply(list.files(path = pieroot,pattern = ".*_outstruct.csv",full.names = T),read.csv)
   #names(piedata_raw)<-gsub("([0-9]+).*$", "\\1",list.files(path = pieroot,pattern = ".*_outstruct.csv"))
   
-  pit_subset<-lapply(gsub("([0-9]+).*$", "\\1",list.files(path = pieroot,pattern = ".*_outstruct.csv")),function(ID){
-    rawdata<-read.csv(file.path(pieroot,paste0(ID,"_outstruct.csv")))
-    rawdata$ID<-ID
-    rawdata$Source<-"PIT"
-    return(rawdata)
-  })
-  psu_subset<-lapply(gsub("([0-9]+).*$", "\\1",list.files(path = file.path(pieroot,"PSU"),pattern = ".*_outstruct.csv")),function(ID){
-    #message(ID)
-    rawdata<-read.csv(file.path(pieroot,"PSU",paste0(ID,"_outstruct.csv")))
-    rawdata$ID<-ID
-    rawdata$Source<-"PSU"
-    if(is.null(rawdata$RT)) {rawdata$RT<-NA}
-    return(rawdata)
-  })
+  if (dataset=='PIT') {
+    pit_subset<-lapply(gsub("([0-9]+).*$", "\\1",list.files(path = pieroot,pattern = ".*_outstruct.csv")),function(ID){
+      rawdata<-read.csv(file.path(pieroot,paste0(ID,"_outstruct.csv")))
+      rawdata$ID<-ID
+      rawdata$Source<-"PIT"
+      return(rawdata)
+    })
+    piedata_raw<-pit_subset 
+  } else if (dataset=='PSU') {
+    psu_subset<-lapply(gsub("([0-9]+).*$", "\\1",list.files(path = file.path(pieroot,"PSU"),pattern = ".*_outstruct.csv")),function(ID){
+      #message(ID)
+      rawdata<-read.csv(file.path(pieroot,"PSU",paste0(ID,"_outstruct.csv")))
+      rawdata$ID<-ID
+      rawdata$Source<-"PSU"
+      if(is.null(rawdata$RT)) {rawdata$RT<-NA}
+      return(rawdata)
+    })
+    piedata_raw<-psu_subset
+  }
   
-  piedata_raw<-c(pit_subset,psu_subset)
+  #piedata_raw<-pit_subset #c(pit_subset,psu_subset)
   piedata_raw_all<-do.call(rbind,piedata_raw)
   
   return(list(list=piedata_raw,df=piedata_raw_all))

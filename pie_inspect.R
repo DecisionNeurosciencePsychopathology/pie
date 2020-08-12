@@ -1,6 +1,6 @@
 ##  inspect data from single subject
 
-setwd("~/code/pie")
+#setwd("~/code/pie")
 library(readr)
 library(lme4)
 # library(lmerTest)
@@ -8,7 +8,7 @@ library(ggplot2)
 library(tidyverse)
 library(multcompView)
 library(stargazer)
-source('~/code/R/vif.lme.R')
+#source('~/code/R/vif.lme.R')
 #
 load("pie_data.rdata")
 
@@ -83,6 +83,7 @@ sdf <- sdf[sdf$type=='dBetaSigmaSquare',]
 
 # subjective Bayesian probabilities by segment
 ggplot(ldf,aes(trial,value, color = variable)) + geom_smooth(method = "loess") + facet_wrap(~num_segments)
+ggplot(ldf,aes(trial,value, color = variable)) + geom_smooth(method = "gam") + facet_wrap(~num_segments)
 ggplot(mdf,aes(trial,value, color = variable)) + geom_smooth(method = "loess") + facet_wrap(~num_segments)
 # ggplot(sdf,aes(trial,value, color = variable,size = num_segments, lty = show_points)) + geom_smooth() 
 
@@ -95,18 +96,19 @@ ggplot(fdf,aes(trial,dBetaMu_selected,color = num_segments, lty = show_points)) 
 ggplot(fdf,aes(trial, dBetaMu_selected,color = num_segments, lty = show_points)) + 
   geom_smooth(method = 'loess') + facet_wrap(~forced_sampling)
 # difference from mean value
-ggplot(fdf,aes(trial,v_diff,color = num_segments, lty = show_points)) + geom_smooth(method = "loess") 
+ggplot(fdf,aes(trial,v_diff,color = num_segments, lty = show_points)) + geom_smooth(method = "loess") #v_diff is by design larger w/8 segments than 4
+ggplot(fdf,aes(trial,v_diff,color = num_segments, lty = show_points)) + geom_smooth()
 # objective value/probability
 ggplot(fdf,aes(trial, selected_prob,color = num_segments, lty = show_points)) + geom_smooth() + facet_wrap(~ID)
 ggplot(fdf,aes(trial, selected_prob,color = num_segments, lty = show_points)) + 
-  geom_smooth(method = 'loess')
+  geom_smooth()
 
 #########
 # value-uncertainty relationship
 
 # beta variance is by definition not epistemic uncertainty but risk
 ggplot(fdf,aes(dBetaMu_selected,dBetaSigmaSquare_selected,color = num_segments, lty = show_points)) + 
-  geom_point() + facet_wrap(~ID)
+  geom_point()# + facet_wrap(~ID)
 
 # u is truly uncorrelated with value and closer to epistemic uncertainty
 ggplot(fdf,aes(dBetaMu_selected,u,color = num_segments, lty = show_points)) + 
@@ -116,7 +118,7 @@ ggplot(fdf,aes(v_bayes_selected,u,color = num_segments, lty = show_points)) +
   geom_smooth(method = "loess")
 # full data 
 ggplot(fdf[fdf$trial>10,],aes(v_bayes_selected,u, color = trial, shape = show_points)) + geom_point() + facet_grid(block_num~ID)
-ggsave("uv_share.pdf", height = 20, width = 20)
+#ggsave("uv_share.pdf", height = 20, width = 20)
 # # right after forced sampling
 # ggplot(ff,aes(v_bayes_selected,u,color = num_segments, lty = show_points)) + geom_smooth(method = "gam")
 # ggplot(ff,aes(selected_prob,u,color = num_segments, lty = show_points)) + geom_smooth(method = "gam")
@@ -134,15 +136,15 @@ summary(m1)
 car::Anova(m1,'3')
 
 # ideal Bayesian observer value
-m2 <- lmer(dBetaMu_selected ~ num_segments * show_points + trial + (1|ID), fdf)
+m2 <- lmer(dBetaMu_selected ~ num_segments * show_points + scale(trial) + (1|ID), fdf)
 summary(m2)
 car::Anova(m2,'3')
 
-m2 <- lmer(dBetaMu_selected ~ num_segments * show_points + scale(trial_adj) + scale(mu_max) +
-           Hscaled_show + (1|ID), fdf)
+# m2 <- lmer(dBetaMu_selected ~ num_segments * show_points + scale(trial_adj) + scale(mu_max) +
+# Hscaled_show + (1|ID), fdf)
 vif.lme(m2)
-summary(m2)
-car::Anova(m2,'3')
+#summary(m2)
+#car::Anova(m2,'3')
 
 
 # does the forced sampling symmetry matter?
@@ -192,12 +194,15 @@ car::Anova(m4vhs,'3')
 
 anova(m4,m4v,m4h)
 
-plot(emmeans(m4vhs, c("Hscaled_show"), by = c("trial_adj"), 
-             at = list(Hscaled_show = c(-2,2), trial_adj = c(5,50))))
+#? interaction with condition and trial
+m5vh <- lmer(u ~ num_segments * show_points + show_points * trial * mu_max + num_segments * H + show_points * H + (1|ID), fdf)
+summary(m5vh)
+car::Anova(m5vh,'3')
+plot(emmeans(m5vh, c("mu_max", "H"), by = c("num_segments", "show_points"), at = list(H = c())))
 
 # beta distribution uncertainty (mu reduces to the mean % reinforced, same as v_bayes)
 # "s" stands for sigma^2
-sm1 <- lmer(dBetaSigmaSquare_selected ~ num_segments * show_points * trial + (1|ID), fdf)
+sm1 <- lmer(dBetaSigmaSquare_selected ~ num_segments * show_points * scale(trial) + (1|ID), fdf)
 summary(sm1)
 car::Anova(sm1,'3')
 # this model is really circular -- the value of current choice should not predict its uncertainty, just for illustration
@@ -262,6 +267,9 @@ m4v <- lmer(u ~ v_max * num_segments * show_points * trial +  (1|ID), fdf)
 summary(m4v)
 car::Anova(m4v,'3')
 anova(m4,m4v)
+
+sm1 <- glmer(u==1 ~ num_segments + show_points + (1|ID), ff,family = 'binomial')
+summary(sm1)
 
 
 # compare observed to expected exploration -- no clear prediction for expected because of value confound
